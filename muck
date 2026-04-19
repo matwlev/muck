@@ -1,0 +1,363 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION="1.0.0"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEFAULT_CSS_LIGHT="$SCRIPT_DIR/muck-light.min.css"
+DEFAULT_CSS_DARK="$SCRIPT_DIR/muck-dark.min.css"
+DEFAULT_CSS_DYNAMIC="$SCRIPT_DIR/muck-dynamic.min.css"
+
+
+help() {
+  cat <<'EOF'
+muck — convert Markdown to styled HTML or PDF
+
+Usage:
+  muck -i <input.md>... [-o <output>] [options]
+
+Options:
+  -i, --input <file|dir>     Input Markdown file or directory (required,
+                            repeatable). Directories are expanded to all
+                            .md files within them.
+  -o, --output <file|dir>   Output file (.html or .pdf) or directory (with
+                            trailing /). Defaults to input filename with
+                            .html (or .pdf with --pdf-engine).
+  -s, --stylesheet <file>   Inline a CSS file into the document (repeatable)
+  --style-link [file|url]   Link a stylesheet instead of inlining (repeatable).
+                            Local files are copied to an output folder.
+  --script <file>           Inline a JavaScript file into the document
+  --script-link <file|url>  Link a JavaScript file or URL. Local files are
+                            copied to an output folder.
+  --pdf-engine <engine>     Generate PDF using the specified engine
+                            (default: weasyprint)
+  --page-size <size>        PDF page size (default: letter)
+  --margin <margin>         PDF page margin (default: 1in)
+  -c, --config <file>       Use a specific config file. Defaults to
+                            ./muck.config, then ~/.muck/config
+  --theme <name>            Apply a theme (default: dynamic). Built-in:
+                            light, dark, dynamic, none.
+                            Custom themes defined in config [themes] section.
+  --filename-transform <t>  Transform the output filename (repeatable).
+                            Presets: lowercase, kebab, snake.
+                            Also accepts a sed expression or a custom
+                            transform name defined in the config file.
+  --no-rewrite-links        Don't rewrite .md links to .html in output
+  -h, --help                Show this help message
+  --version                 Show version
+
+Config File:
+  muck reads a config file (one option per line) before processing CLI args,
+  so CLI args always override config values. Example muck.config:
+
+    --stylesheet ./theme.css
+    --page-size A4
+    --margin 2cm
+
+Examples:
+  muck -i notes.md                              # HTML with inline styles
+  muck -i notes.md -s ./theme.css               # Custom stylesheet
+  muck -i notes.md --style-link                  # Link to CSS CDN
+  muck -i notes.md -o report.pdf                 # PDF via weasyprint
+  muck -i notes.md -o report.pdf --page-size A4  # PDF with A4 pages
+  muck -i ch1.md -i ch2.md -i ch3.md            # Convert multiple files
+  muck -i ~/docs/*.md                            # Convert all .md files in a dir
+  muck -i ~/docs/*.md -o ./output/               # Output all to a directory
+EOF
+  exit 0
+}
+
+# Find config file: check --config flag first, then defaults
+config_file=""
+for ((i=1; i<=$#; i++)); do
+  if [[ "${!i}" == "--config" || "${!i}" == "-c" ]]; then
+    j=$((i+1)); config_file="${!j}"; break
+  fi
+done
+if [[ -z "$config_file" ]]; then
+  if [[ -f "./muck.config" ]]; then config_file="./muck.config"
+  elif [[ -f "$HOME/.muck/config" ]]; then config_file="$HOME/.muck/config"
+  fi
+fi
+
+# Load config: parse [themes] and [filename-transforms] sections separately, rest becomes default args
+theme_names=(light dark dynamic none)
+theme_styles=("inline:$DEFAULT_CSS_LIGHT" "inline:$DEFAULT_CSS_DARK" "inline:$DEFAULT_CSS_DYNAMIC" "")
+custom_transform_names=()
+custom_transform_exprs=()
+config_args=()
+if [[ -n "$config_file" && -f "$config_file" ]]; then
+  config_dir="$(cd "$(dirname "$config_file")" && pwd)"
+  in_section=""
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line%%#*}"          # strip comments
+    [[ -z "${line// }" ]] && continue
+    if [[ "$line" =~ ^\[themes\] ]]; then in_section=themes; continue; fi
+    if [[ "$line" =~ ^\[filename-transforms\] ]]; then in_section=ft; continue; fi
+    if [[ "$line" =~ ^\[ ]]; then in_section=""; fi
+    if [[ "$in_section" == "themes" ]]; then
+      read -r tname turl <<< "$line"
+      if [[ -n "$tname" && -n "$turl" ]]; then
+        # Resolve relative paths against config file directory
+        [[ "$turl" != /* && "$turl" != http* && -f "$config_dir/$turl" ]] && turl="$config_dir/$turl"
+        theme_names+=("$tname")
+        if [[ -f "$turl" ]]; then
+          theme_styles+=("inline:$turl")
+        else
+          theme_styles+=("link:$turl")
+        fi
+      fi
+    elif [[ "$in_section" == "ft" ]]; then
+      ftname="${line%% *}"
+      ftexpr="${line#* }"
+      if [[ -n "$ftname" && -n "$ftexpr" ]]; then
+        custom_transform_names+=("$ftname")
+        custom_transform_exprs+=("$ftexpr")
+      fi
+    else
+      # shellcheck disable=SC2206
+      config_args+=($line)
+    fi
+  done < "$config_file"
+fi
+
+# Merge: config args first, then CLI args (stripping --config from CLI)
+cli_args=()
+skip=false
+for arg in "$@"; do
+  if $skip; then skip=false; continue; fi
+  if [[ "$arg" == "--config" || "$arg" == "-c" ]]; then skip=true; continue; fi
+  cli_args+=("$arg")
+done
+set -- "${config_args[@]+"${config_args[@]}"}" "${cli_args[@]+"${cli_args[@]}"}"
+
+# Ordered style entries: "inline:<path>" or "link:<file|url>"
+styles=()
+inputs=()
+script_file=""
+script_external=""
+filename_transforms=()
+pdf_engine=""
+page_size="letter"
+page_margin="1in"
+theme=""
+output=""
+rewrite_links=true
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -h|--help) help ;;
+    --version) echo "muck $VERSION"; exit 0 ;;
+    -i|--input) shift; while [[ $# -gt 0 && "$1" != -* ]]; do inputs+=("$1"); shift; done ;;
+    -o|--output) output="$2"; shift 2 ;;
+    -s|--stylesheet) styles+=("inline:$2"); shift 2 ;;
+    --style-link)
+      if [[ -n "${2:-}" && "$2" != -* ]]; then
+        styles+=("link:$2"); shift 2
+      else
+        shift
+      fi ;;
+    --script) script_file="$2"; shift 2 ;;
+    --script-link) script_external="$2"; shift 2 ;;
+    --pdf-engine) pdf_engine="$2"; shift 2 ;;
+    --page-size) page_size="$2"; shift 2 ;;
+    --margin) page_margin="$2"; shift 2 ;;
+    --theme) theme="$2"; shift 2 ;;
+    --filename-transform) filename_transforms+=("$2"); shift 2 ;;
+    --no-rewrite-links) rewrite_links=false; shift ;;
+    *) echo "Unknown option: $1" >&2; echo "Run 'muck --help' for usage." >&2; exit 1 ;;
+  esac
+done
+
+[[ ${#inputs[@]} -eq 0 ]] && { echo "Error: -i <input.md> is required. Run 'muck --help' for usage." >&2; exit 1; }
+
+# Expand directory inputs into .md files
+expanded=()
+for inp in "${inputs[@]}"; do
+  if [[ -d "$inp" ]]; then
+    while IFS= read -r -d '' f; do expanded+=("$f"); done < <(find "$inp" -name '*.md' -print0)
+  else
+    expanded+=("$inp")
+  fi
+done
+inputs=("${expanded[@]}")
+[[ ${#inputs[@]} -eq 0 ]] && { echo "Error: no .md files found in the specified directory." >&2; exit 1; }
+
+# Determine if -o is a directory target
+output_dir=""
+if [[ -n "$output" ]]; then
+  if [[ "$output" == */ || -d "$output" ]]; then
+    output_dir="${output%/}"
+    mkdir -p "$output_dir"
+    output=""
+  elif [[ ${#inputs[@]} -gt 1 ]]; then
+    echo "Error: -o must be a directory (with trailing /) when used with multiple input files." >&2; exit 1
+  fi
+fi
+
+# Default: apply theme, then any explicit styles on top
+[[ -z "$theme" ]] && theme="dynamic"
+theme_style=""
+theme_found=false
+for ((i=0; i<${#theme_names[@]}; i++)); do
+  if [[ "${theme_names[$i]}" == "$theme" ]]; then
+    theme_style="${theme_styles[$i]}"
+    theme_found=true
+    break
+  fi
+done
+if ! $theme_found; then
+  echo "Error: unknown theme '$theme'. Available: ${theme_names[*]}" >&2; exit 1
+fi
+if [[ ${#styles[@]} -eq 0 && -n "$theme_style" ]]; then
+  styles=("$theme_style")
+elif [[ -n "$theme_style" ]]; then
+  styles=("$theme_style" "${styles[@]}")
+fi
+
+for input in "${inputs[@]}"; do
+
+case "${input##*.}" in
+  md|markdown|mdown|mkd) ;;
+  *) echo "⚠️  Skipping $(basename "$input") (not a Markdown file)" >&2; continue ;;
+esac
+
+[[ -f "$input" ]] || { echo "Error: $input not found" >&2; exit 1; }
+
+if [[ -n "$output" ]]; then
+  cur_output="$output"
+elif [[ -n "$pdf_engine" ]]; then
+  base="$(basename "${input%.*}").pdf"
+  cur_output="${output_dir:-$(dirname "$input")}/$base"
+else
+  base="$(basename "${input%.*}").html"
+  cur_output="${output_dir:-$(dirname "$input")}/$base"
+fi
+
+# Apply filename transforms to the output basename
+if [[ ${#filename_transforms[@]} -gt 0 ]]; then
+  out_dir_part="$(dirname "$cur_output")"
+  out_base="$(basename "$cur_output")"
+  out_ext="${out_base##*.}"
+  out_name="${out_base%.*}"
+  for t in "${filename_transforms[@]}"; do
+    case "$t" in
+      lowercase) out_name="$(echo "$out_name" | tr '[:upper:]' '[:lower:]')" ;;
+      kebab) out_name="$(echo "$out_name" | sed 's/[_ ]/-/g')" ;;
+      snake) out_name="$(echo "$out_name" | sed 's/[- ]/_/g')" ;;
+      s*)  out_name="$(echo "$out_name" | sed "$t")" ;;
+      *)
+        matched=false
+        for ((i=0; i<${#custom_transform_names[@]}; i++)); do
+          if [[ "${custom_transform_names[$i]}" == "$t" ]]; then
+            out_name="$(echo "$out_name" | sed "${custom_transform_exprs[$i]}")"
+            matched=true; break
+          fi
+        done
+        $matched || { echo "Error: unknown filename transform '$t'" >&2; exit 1; }
+        ;;
+    esac
+  done
+  cur_output="$out_dir_part/$out_name.$out_ext"
+fi
+
+body=$(pandoc -f gfm -t html "$input")
+
+# Rewrite .md links to .html
+if $rewrite_links; then
+  body=$(echo "$body" | sed -E 's/(href="[^"]*\.)md(["#])/\1html\2/g')
+fi
+
+# Script tags
+script_tag=""
+if [[ -n "$script_file" ]]; then
+  [[ -f "$script_file" ]] || { echo "Error: $script_file not found" >&2; exit 1; }
+  script_tag="<script>$(cat "$script_file")</script>"
+fi
+
+# Check if we need an output folder
+use_folder=false
+for s in ${styles[@]+"${styles[@]}"}; do
+  val="${s#*:}"
+  [[ "$s" == link:* && -f "$val" ]] && use_folder=true
+done
+[[ -n "$script_external" && -f "$script_external" ]] && use_folder=true
+
+if $use_folder; then
+  out_dir="${cur_output%.html}"
+  mkdir -p "$out_dir"
+  out_file="$out_dir/$(basename "$cur_output")"
+else
+  out_file="$cur_output"
+fi
+
+# Build style tags in order
+style_html=""
+for s in ${styles[@]+"${styles[@]}"}; do
+  type="${s%%:*}"
+  val="${s#*:}"
+  if [[ "$type" == "inline" ]]; then
+    [[ -f "$val" ]] || { echo "Error: stylesheet $val not found" >&2; exit 1; }
+    style_html+="<style>$(cat "$val")</style>"
+  else
+    if [[ -f "$val" ]]; then
+      css_name="$(basename "$val")"
+      cp "$val" "$out_dir/$css_name"
+      style_html+="<link rel=\"stylesheet\" href=\"$css_name\">"
+    else
+      style_html+="<link rel=\"stylesheet\" href=\"$val\">"
+    fi
+  fi
+done
+
+# External script
+ext_script_tag=""
+if [[ -n "$script_external" ]]; then
+  if [[ -f "$script_external" ]]; then
+    js_name="$(basename "$script_external")"
+    cp "$script_external" "$out_dir/$js_name"
+    ext_script_tag="<script src=\"$js_name\"></script>"
+  else
+    ext_script_tag="<script src=\"$script_external\"></script>"
+  fi
+fi
+
+# PDF-specific styles
+if [[ "$cur_output" == *.pdf ]] || [[ -n "$pdf_engine" ]]; then
+  pdf_style="<style>@page{size:$page_size;margin:$page_margin;}body{max-width:none;margin:0;padding:0;}</style>"
+  body_style=""
+else
+  pdf_style=""
+  body_style=" style=\"max-width:800px;margin:auto;padding:2em;\""
+fi
+
+cat > "$out_file" <<EOF
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+$style_html$pdf_style</head>
+<body$body_style>
+$body
+$script_tag$ext_script_tag</body>
+</html>
+EOF
+
+# PDF output
+if [[ "$cur_output" == *.pdf ]] || [[ -n "$pdf_engine" ]]; then
+  [[ -z "$pdf_engine" ]] && pdf_engine="weasyprint"
+  pdf_out="${cur_output%.html}"
+  [[ "$pdf_out" != *.pdf ]] && pdf_out="${pdf_out%.pdf}.pdf"
+  tmp_html=$(mktemp "${TMPDIR:-/tmp}/muck.XXXXXX")
+  mv "$tmp_html" "$tmp_html.html"
+  tmp_html="$tmp_html.html"
+  mv "$out_file" "$tmp_html"
+  if [[ "$(uname)" == "Darwin" ]] && [[ -d /opt/homebrew/lib ]]; then
+    export DYLD_LIBRARY_PATH="/opt/homebrew/lib${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+  fi
+  "$pdf_engine" "$tmp_html" "$pdf_out"
+  rm -f "$tmp_html"
+  echo "Converted $input -> $pdf_out"
+else
+  echo "Converted $input -> $out_file"
+fi
+
+done

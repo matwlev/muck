@@ -1,0 +1,166 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VERSION="1.0.0"
+PORT=8080
+INPUTS=()
+OPEN=false
+MUCK_ARGS=()
+
+help() {
+  cat <<'EOF'
+muck-serve — live-preview server for muck
+
+Usage:
+  muck-serve -i <file|dir>... [-p <port>] [--open] [-- <muck args>...]
+
+Options:
+  -i, --input <file|dir>  Input Markdown file or directory (required,
+                           repeatable). Directories are expanded to all
+                           .md files within them.
+  -p, --port <port>       HTTP server port (default: 8080)
+  --open                  Open the preview in your default browser
+  -h, --help              Show this help message
+  --version               Show version
+  --                      Pass remaining arguments to muck (e.g. stylesheets)
+
+Examples:
+  muck-serve -i notes.md
+  muck-serve -i ./docs/
+  muck-serve -i .
+  muck-serve -i ch1.md -i ch2.md
+  muck-serve -i notes.md --open
+  muck-serve -i notes.md -p 3000 -- -s ./my-theme.css
+EOF
+  exit 0
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)  help ;;
+    --version)  echo "muck-serve $VERSION"; exit 0 ;;
+    -i|--input) shift; while [[ $# -gt 0 && "$1" != -* ]]; do INPUTS+=("$1"); shift; done ;;
+    -p|--port)  PORT="$2"; shift 2 ;;
+    --open)     OPEN=true; shift ;;
+    --)         shift; MUCK_ARGS=("$@"); break ;;
+    *)          MUCK_ARGS+=("$1"); shift ;;
+  esac
+done
+
+[[ ${#INPUTS[@]} -eq 0 ]] && { echo "Error: -i <file|dir> is required. Run 'muck-serve --help' for usage." >&2; exit 1; }
+
+# Expand inputs into .md files, track watched directories
+MD_FILES=()
+WATCH_DIRS=()
+for inp in "${INPUTS[@]}"; do
+  [[ -e "$inp" ]] || { echo "Error: $inp not found" >&2; exit 1; }
+  if [[ -d "$inp" ]]; then
+    abs="$(cd "$inp" && pwd)"
+    WATCH_DIRS+=("$abs")
+    while IFS= read -r -d '' f; do MD_FILES+=("$f"); done < <(find "$abs" -name '*.md' -print0)
+  else
+    [[ -f "$inp" ]] || { echo "Error: $inp is not a file or directory" >&2; exit 1; }
+    MD_FILES+=("$(cd "$(dirname "$inp")" && pwd)/$(basename "$inp")")
+  fi
+done
+[[ ${#MD_FILES[@]} -eq 0 ]] && { echo "Error: no .md files found." >&2; exit 1; }
+
+SERVE_DIR="$(mktemp -d)"
+TS_FILE="${SERVE_DIR}/.muck-ts"
+
+RELOAD_SCRIPT='<script>(function(){var t="";setInterval(function(){fetch("/.muck-ts?"+Date.now()).then(function(r){return r.text()}).then(function(s){if(t\&\&s!==t)location.reload();t=s})},500)})()</script>'
+
+inject_reload() {
+  sed -i.bak "s|</body>|${RELOAD_SCRIPT}</body>|" "$1"
+  rm -f "$1.bak"
+}
+
+rebuild_file() {
+  local src="$1"
+  local out="${SERVE_DIR}/$(basename "${src%.md}.html")"
+  muck -i "$src" -o "$out" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"
+  inject_reload "$out"
+}
+
+rebuild_all() {
+  local muck_inputs=()
+  for f in "${MD_FILES[@]}"; do muck_inputs+=(-i "$f"); done
+  muck "${muck_inputs[@]}" -o "${SERVE_DIR}/" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"
+  while IFS= read -r -d '' h; do inject_reload "$h"; done < <(find "$SERVE_DIR" -name '*.html' -print0)
+  date +%s > "$TS_FILE"
+  echo "[muck-serve] rebuilt ${#MD_FILES[@]} file(s) $(date +%T)"
+}
+
+cleanup() { kill "${SERVER_PID:-}" 2>/dev/null; rm -rf "$SERVE_DIR"; }
+trap cleanup EXIT
+
+rebuild_all
+
+# Start HTTP server
+python3 -c "
+import http.server, os
+D='${SERVE_DIR}'
+class H(http.server.SimpleHTTPRequestHandler):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, directory=D, **kw)
+    def do_GET(self):
+        if self.path.startswith('/.muck-ts'):
+            self.send_response(200)
+            self.send_header('Content-Type','text/plain')
+            self.send_header('Cache-Control','no-store')
+            self.end_headers()
+            p=os.path.join(D,'.muck-ts')
+            ts = open(p).read().strip() if os.path.exists(p) else ''
+            self.wfile.write(ts.encode())
+        else:
+            super().do_GET()
+    def log_message(self, *a): pass
+http.server.HTTPServer(('',${PORT}),H).serve_forever()
+" &
+SERVER_PID=$!
+
+ENTRY="index.html"
+[[ -f "${SERVE_DIR}/index.html" ]] || ENTRY="$(basename "${MD_FILES[0]%.md}.html")"
+echo "[muck-serve] http://localhost:${PORT}/${ENTRY}"
+OPEN_URL="http://localhost:${PORT}/${ENTRY}"
+
+if $OPEN; then
+  if command -v open &>/dev/null; then open "$OPEN_URL"
+  elif command -v xdg-open &>/dev/null; then xdg-open "$OPEN_URL"
+  fi
+fi
+
+# Build initial mod-time snapshot (parallel array for bash 3 compat)
+LAST_MODS=()
+for f in "${MD_FILES[@]}"; do
+  LAST_MODS+=("$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f")")
+done
+
+# Watch for changes
+while true; do
+  sleep 1
+  changed=false
+  # Detect new files in watched directories
+  for d in "${WATCH_DIRS[@]+"${WATCH_DIRS[@]}"}"; do
+    while IFS= read -r -d '' f; do
+      found=false
+      for existing in "${MD_FILES[@]}"; do [[ "$existing" == "$f" ]] && { found=true; break; }; done
+      if ! $found; then
+        MD_FILES+=("$f")
+        LAST_MODS+=(0)
+      fi
+    done < <(find "$d" -name '*.md' -print0)
+  done
+  for ((i=0; i<${#MD_FILES[@]}; i++)); do
+    f="${MD_FILES[$i]}"
+    [[ -f "$f" ]] || continue
+    cur=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f")
+    if [[ "$cur" != "${LAST_MODS[$i]}" ]]; then
+      LAST_MODS[$i]="$cur"
+      rebuild_file "$f"
+      changed=true
+      echo "[muck-serve] rebuilt $(basename "$f") $(date +%T)"
+    fi
+  done
+  if $changed; then date +%s > "$TS_FILE"; fi
+done
