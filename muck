@@ -43,7 +43,9 @@ Options:
                             Also accepts a sed expression or a custom
                             transform name defined in the config file.
   --no-rewrite-links        Don't rewrite .md links to .html in output
-  --keep-theme  Keep the default theme when -s/--style-link is used
+  --keep-theme              Keep the default theme when -s/--style-link is used
+  --mirror-structure        When outputting to a directory, preserve the input
+                            directory structure in the output
   -h, --help                Show this help message
   --version                 Show version
 
@@ -85,6 +87,7 @@ Examples:
   muck -i ch1.md -i ch2.md -i ch3.md            # Convert multiple files
   muck -i ~/docs/*.md                            # Convert all .md files in a dir
   muck -i ~/docs/*.md -o ./output/               # Output all to a directory
+  muck -i ~/docs/ -o ./output/ --mirror-structure # Preserve directory structure
 EOF
   exit 0
 }
@@ -181,6 +184,7 @@ set -- "${config_args[@]+"${config_args[@]}"}" "${cli_args[@]+"${cli_args[@]}"}"
 # Ordered style entries: "inline:<path>" or "link:<file|url>"
 styles=()
 inputs=()
+input_roots=()
 scripts=("${config_scripts[@]+"${config_scripts[@]}"}")
 filename_transforms=()
 pdf_engine=""
@@ -190,6 +194,7 @@ theme=""
 output=""
 rewrite_links=true
 keep_theme=false
+mirror_structure=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h|--help) help ;;
@@ -212,6 +217,7 @@ while [[ $# -gt 0 ]]; do
     --filename-transform) filename_transforms+=("$2"); shift 2 ;;
     --no-rewrite-links) rewrite_links=false; shift ;;
     --keep-theme) keep_theme=true; shift ;;
+    --mirror-structure) mirror_structure=true; shift ;;
     *) echo "Unknown option: $1" >&2; echo "Run 'muck --help' for usage." >&2; exit 1 ;;
   esac
 done
@@ -222,9 +228,14 @@ done
 expanded=()
 for inp in "${inputs[@]}"; do
   if [[ -d "$inp" ]]; then
-    while IFS= read -r -d '' f; do expanded+=("$f"); done < <(find "$inp" -name '*.md' -print0)
+    abs_inp="$(cd "$inp" && pwd)"
+    while IFS= read -r -d '' f; do
+      expanded+=("$f")
+      input_roots+=("$abs_inp")
+    done < <(find "$inp" -name '*.md' -print0)
   else
     expanded+=("$inp")
+    input_roots+=("")
   fi
 done
 inputs=("${expanded[@]}")
@@ -272,7 +283,9 @@ if [[ ${#theme_script_arr[@]} -gt 0 ]]; then
   scripts=("${theme_script_arr[@]}" "${scripts[@]+"${scripts[@]}"}")
 fi
 
-for input in "${inputs[@]}"; do
+for ((input_idx=0; input_idx<${#inputs[@]}; input_idx++)); do
+input="${inputs[$input_idx]}"
+input_root="${input_roots[$input_idx]:-}"
 
 case "${input##*.}" in
   md|markdown|mdown|mkd) ;;
@@ -284,10 +297,22 @@ esac
 if [[ -n "$output" ]]; then
   cur_output="$output"
 elif [[ -n "$pdf_engine" ]]; then
-  base="$(basename "${input%.*}").pdf"
+  if $mirror_structure && [[ -n "$output_dir" && -n "$input_root" ]]; then
+    abs_input="$(cd "$(dirname "$input")" && pwd)/$(basename "$input")"
+    rel="${abs_input#$input_root/}"
+    base="${rel%.*}.pdf"
+  else
+    base="$(basename "${input%.*}").pdf"
+  fi
   cur_output="${output_dir:-$(dirname "$input")}/$base"
 else
-  base="$(basename "${input%.*}").html"
+  if $mirror_structure && [[ -n "$output_dir" && -n "$input_root" ]]; then
+    abs_input="$(cd "$(dirname "$input")" && pwd)/$(basename "$input")"
+    rel="${abs_input#$input_root/}"
+    base="${rel%.*}.html"
+  else
+    base="$(basename "${input%.*}").html"
+  fi
   cur_output="${output_dir:-$(dirname "$input")}/$base"
 fi
 

@@ -99,6 +99,9 @@ muck -i ~/Documents/markdown/*.md
 # Output all to a specific directory
 muck -i ~/Documents/markdown/ -o ./output/
 
+# Preserve subdirectory structure in the output
+muck -i ~/Documents/markdown/ -o ./output/ --mirror-structure
+
 # With shared options
 muck -i *.md -s ./theme.css --filename-transform lowercase
 ```
@@ -192,6 +195,9 @@ muck-serve -i notes.md --open
 
 # Custom port with a stylesheet
 muck-serve -i notes.md -p 3000 -- -s ./my-theme.css
+
+# Preserve directory structure (keeps relative links working)
+muck-serve -i ./docs/ --mirror-structure
 ```
 
 When serving a directory, interlinked `.md` files are all converted and kept in sync — editing any file triggers a rebuild and live-reload. New `.md` files added to the directory are picked up automatically.
@@ -218,6 +224,7 @@ Press `Ctrl+C` to stop the server.
 | `--filename-transform T` | | Transform output filename (repeatable). Presets: `lowercase`, `kebab`, `snake` |
 | `--no-rewrite-links` | | Don't rewrite `.md` links to `.html` in output |
 | `--keep-theme` | | Keep the default theme when `-s`/`--style-link` is used |
+| `--mirror-structure` | | Preserve input directory structure in output directory |
 | `--help` | `-h` | Show help |
 | `--version` | | Show version |
 
@@ -228,6 +235,7 @@ Press `Ctrl+C` to stop the server.
 | `--input FILE\|DIR` | `-i FILE\|DIR` | Input Markdown file or directory (required, repeatable) |
 | `--port PORT` | `-p PORT` | HTTP server port (default: `8080`) |
 | `--open` | | Open preview in default browser |
+| `--mirror-structure` | | Preserve input directory structure in output directory |
 | `--` | | Pass remaining arguments to muck |
 | `--help` | `-h` | Show help |
 | `--version` | | Show version |
