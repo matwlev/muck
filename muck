@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="1.0.0"
+VERSION="1.1.0"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEFAULT_CSS_LIGHT="$SCRIPT_DIR/muck-light.min.css"
 DEFAULT_CSS_DARK="$SCRIPT_DIR/muck-dark.min.css"
