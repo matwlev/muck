@@ -113,14 +113,19 @@ rebuild_file() {
   out="$(serve_output_path "$src" "$root")"
   mkdir -p "$(dirname "$out")"
   local mirror_flag=()
-  $MIRROR_STRUCTURE && [[ -n "$root" ]] && mirror_flag=(--mirror-structure)
-  muck -i "$src" -o "$(dirname "$out")/" "${mirror_flag[@]+"${mirror_flag[@]}"}" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"
-  inject_reload "$out"
+  if $MIRROR_STRUCTURE && [[ -n "$root" ]]; then
+    mirror_flag=(--mirror-structure)
+    muck -i "$root" -o "${SERVE_DIR}/" "${mirror_flag[@]}" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"
+    while IFS= read -r -d '' h; do inject_reload "$h"; done < <(find "$SERVE_DIR" -name '*.html' -print0)
+  else
+    muck -i "$src" -o "$(dirname "$out")/" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"
+    inject_reload "$out"
+  fi
 }
 
 rebuild_all() {
   local muck_inputs=()
-  for f in "${MD_FILES[@]}"; do muck_inputs+=(-i "$f"); done
+  for inp in "${INPUTS[@]}"; do muck_inputs+=(-i "$inp"); done
   local mirror_flag=()
   $MIRROR_STRUCTURE && mirror_flag=(--mirror-structure)
   muck "${muck_inputs[@]}" -o "${SERVE_DIR}/" "${mirror_flag[@]+"${mirror_flag[@]}"}" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"
