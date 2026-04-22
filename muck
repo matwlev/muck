@@ -366,6 +366,7 @@ if $use_folder; then
   mkdir -p "$out_dir"
   out_file="$out_dir/$(basename "$cur_output")"
 else
+  mkdir -p "$(dirname "$cur_output")"
   out_file="$cur_output"
 fi
 
