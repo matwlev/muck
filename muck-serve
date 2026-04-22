@@ -6,6 +6,7 @@ PORT=8080
 INPUTS=()
 OPEN=false
 MIRROR_STRUCTURE=false
+OUTPUT_DIR=""
 MUCK_ARGS=()
 
 help() {
@@ -19,6 +20,9 @@ Options:
   -i, --input <file|dir>  Input Markdown file or directory (required,
                            repeatable). Directories are expanded to all
                            .md files within them.
+  -o, --output <dir>      Output directory (default: a temp dir). The
+                           directory is created if it does not exist and
+                           --mirror-structure is implied.
   -p, --port <port>       HTTP server port (default: 8080)
   --open                  Open the preview in your default browser
   --mirror-structure      Preserve input directory structure in the output
@@ -43,6 +47,7 @@ while [[ $# -gt 0 ]]; do
     -h|--help)          help ;;
     --version)          echo "muck-serve $VERSION"; exit 0 ;;
     -i|--input)         shift; while [[ $# -gt 0 && "$1" != -* ]]; do INPUTS+=("$1"); shift; done ;;
+    -o|--output)        OUTPUT_DIR="$2"; shift 2 ;;
     -p|--port)          PORT="$2"; shift 2 ;;
     --open)             OPEN=true; shift ;;
     --mirror-structure) MIRROR_STRUCTURE=true; shift ;;
@@ -74,7 +79,14 @@ for inp in "${INPUTS[@]}"; do
 done
 [[ ${#MD_FILES[@]} -eq 0 ]] && { echo "Error: no .md files found." >&2; exit 1; }
 
-SERVE_DIR="$(mktemp -d)"
+TEMP_SERVE_DIR=""
+if [[ -n "$OUTPUT_DIR" ]]; then
+  SERVE_DIR="$(mkdir -p "$OUTPUT_DIR" && cd "$OUTPUT_DIR" && pwd)"
+  MIRROR_STRUCTURE=true
+else
+  SERVE_DIR="$(mktemp -d)"
+  TEMP_SERVE_DIR="$SERVE_DIR"
+fi
 TS_FILE="${SERVE_DIR}/.muck-ts"
 
 RELOAD_SCRIPT='<script>(function(){var t="";setInterval(function(){fetch("/.muck-ts?"+Date.now()).then(function(r){return r.text()}).then(function(s){if(t\&\&s!==t)location.reload();t=s})},500)})()</script>'
@@ -117,7 +129,7 @@ rebuild_all() {
   echo "[muck-serve] rebuilt ${#MD_FILES[@]} file(s) $(date +%T)"
 }
 
-cleanup() { kill "${SERVER_PID:-}" 2>/dev/null; rm -rf "$SERVE_DIR"; }
+cleanup() { kill "${SERVER_PID:-}" 2>/dev/null; [[ -n "$TEMP_SERVE_DIR" ]] && rm -rf "$TEMP_SERVE_DIR"; }
 trap cleanup EXIT
 
 rebuild_all
@@ -145,8 +157,11 @@ http.server.HTTPServer(('',${PORT}),H).serve_forever()
 " &
 SERVER_PID=$!
 
-ENTRY="index.html"
-[[ -f "${SERVE_DIR}/index.html" ]] || ENTRY="$(basename "${MD_FILES[0]%.md}.html")"
+ENTRY=""
+for candidate in README.html index.html; do
+  [[ -f "${SERVE_DIR}/${candidate}" ]] && { ENTRY="$candidate"; break; }
+done
+[[ -z "$ENTRY" ]] && ENTRY="$(basename "${MD_FILES[0]%.md}.html")"
 echo "[muck-serve] http://localhost:${PORT}/${ENTRY}"
 OPEN_URL="http://localhost:${PORT}/${ENTRY}"
 
