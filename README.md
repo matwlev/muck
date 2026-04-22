@@ -108,9 +108,6 @@ When converting multiple files, each gets its own output file (named after the i
 ### Linked stylesheets
 
 ```bash
-# Link to CSS CDN instead of inlining
-muck -i notes.md --style-link
-
 # Link to a remote URL
 muck -i notes.md --style-link https://example.com/style.css
 
@@ -210,9 +207,9 @@ Press `Ctrl+C` to stop the server.
 | `--input FILE\|DIR` | `-i FILE\|DIR` | Input Markdown file or directory (required, repeatable) |
 | `--output FILE\|DIR` | `-o FILE\|DIR` | Output file or directory (trailing `/`). Defaults to input filename with .html |
 | `--stylesheet FILE` | `-s FILE` | Inline a CSS file (repeatable) |
-| `--style-link [FILE\|URL]` | | Link a stylesheet (repeatable). No value = CDN stylesheet |
-| `--script FILE` | | Inline a JavaScript file |
-| `--script-link FILE\|URL` | | Link a JavaScript file or URL |
+| `--style-link [FILE\|URL]` | | Link a stylesheet (repeatable) |
+| `--script FILE` | | Inline a JavaScript file (repeatable) |
+| `--script-link FILE\|URL` | | Link a JavaScript file or URL (repeatable) |
 | `--pdf-engine ENGINE` | | PDF engine (default: `weasyprint`) |
 | `--page-size SIZE` | | PDF page size (default: `letter`) |
 | `--margin MARGIN` | | PDF page margin (default: `1in`) |
@@ -220,6 +217,7 @@ Press `Ctrl+C` to stop the server.
 | `--theme NAME` | | Apply a theme (default: `dynamic`). Built-in: `light`, `dark`, `dynamic`, `none` |
 | `--filename-transform T` | | Transform output filename (repeatable). Presets: `lowercase`, `kebab`, `snake` |
 | `--no-rewrite-links` | | Don't rewrite `.md` links to `.html` in output |
+| `--keep-theme` | | Keep the default theme when `-s`/`--style-link` is used |
 | `--help` | `-h` | Show help |
 | `--version` | | Show version |
 
@@ -250,17 +248,31 @@ The config file uses the same options as the CLI, one per line. CLI arguments al
 --margin 2cm
 ```
 
+### Scripts
+
+Add scripts to every conversion with a `[scripts]` section. Each line is a file path (inlined) or URL (linked). Prefix with `link:` to force linking a local file instead of inlining it:
+
+```
+[scripts]
+./analytics.js
+link:./app.js
+https://cdn.example.com/lib.js
+```
+
+Config scripts are applied before any `--script`/`--script-link` flags.
+
 ### Custom themes
 
-Define custom themes in a `[themes]` section. Each line is a name followed by a stylesheet URL or local file path:
+Define custom themes in a `[themes]` section. Each line starts with a theme name followed by space-separated assets. Unprefixed paths/URLs are stylesheets; use `script:` to inline a JS file and `script-link:` to link one. Multiple assets of each type are supported and applied in order:
 
 ```
 [themes]
 dracula https://cdn.example.com/dracula.css
-custom ./styles/custom.css
+fancy ./style.css ./extra.css script:./toggle.js
+mixed ./style.css script:./a.js script-link:https://cdn.example.com/lib.js
 ```
 
-The theme stylesheet is applied first; any additional `-s`/`--style-link` options layer on top. Built-in themes (`light`, `dark`, `dynamic`, `none`) are always available.
+Theme assets are applied first; any additional `-s`/`--style-link`/`--script`/`--script-link` options layer on top. Built-in themes (`light`, `dark`, `dynamic`, `none`) are always available.
 
 ### Custom filename transforms
 
@@ -281,6 +293,7 @@ Headings, bold, italic, links, images, inline code, fenced code blocks, tables, 
 ## Notes
 
 - Links to `.md` files are automatically rewritten to `.html` in the output (disable with `--no-rewrite-links`)
-- Default output is a single self-contained HTML file with styling embedded in a `<style>` tag
+- Default output is a single self-contained HTML file with styling embedded in a `<style>` tag and scripts embedded in `<script>` tags
 - When linking local CSS or JS files, muck creates an output folder containing the HTML and copies of the linked files
 - Stylesheets are added to the document head in the order they're passed
+- Scripts are added to the document body in the order they're passed

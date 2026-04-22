@@ -26,8 +26,9 @@ Options:
   --style-link [file|url]   Link a stylesheet instead of inlining (repeatable).
                             Local files are copied to an output folder.
   --script <file>           Inline a JavaScript file into the document
+                            (repeatable)
   --script-link <file|url>  Link a JavaScript file or URL. Local files are
-                            copied to an output folder.
+                            copied to an output folder. (repeatable)
   --pdf-engine <engine>     Generate PDF using the specified engine
                             (default: weasyprint)
   --page-size <size>        PDF page size (default: letter)
@@ -42,6 +43,7 @@ Options:
                             Also accepts a sed expression or a custom
                             transform name defined in the config file.
   --no-rewrite-links        Don't rewrite .md links to .html in output
+  --keep-theme  Keep the default theme when -s/--style-link is used
   -h, --help                Show this help message
   --version                 Show version
 
@@ -53,10 +55,31 @@ Config File:
     --page-size A4
     --margin 2cm
 
+  [scripts] section — scripts applied to every conversion:
+
+    [scripts]
+    ./analytics.js
+    link:./app.js
+    https://cdn.example.com/lib.js
+
+  Each line is a file path (inlined) or URL (linked). Prefix with link: to
+  force linking a local file instead of inlining it.
+
+  [themes] section — custom themes with stylesheets and/or scripts:
+
+    [themes]
+    dracula https://cdn.example.com/dracula.css
+    fancy ./style.css ./extra.css script:./toggle.js script-link:https://cdn.example.com/lib.js
+
+  Each line starts with a theme name followed by space-separated assets.
+  Unprefixed paths/URLs are stylesheets. script: inlines a JS file.
+  script-link: links a JS file or URL. Multiple assets of each type are
+  supported and applied in order.
+
 Examples:
   muck -i notes.md                              # HTML with inline styles
   muck -i notes.md -s ./theme.css               # Custom stylesheet
-  muck -i notes.md --style-link                  # Link to CSS CDN
+  muck -i notes.md --style-link https://cdn.example.com/style.css  # Link stylesheet
   muck -i notes.md -o report.pdf                 # PDF via weasyprint
   muck -i notes.md -o report.pdf --page-size A4  # PDF with A4 pages
   muck -i ch1.md -i ch2.md -i ch3.md            # Convert multiple files
@@ -82,8 +105,10 @@ fi
 # Load config: parse [themes] and [filename-transforms] sections separately, rest becomes default args
 theme_names=(light dark dynamic none)
 theme_styles=("inline:$DEFAULT_CSS_LIGHT" "inline:$DEFAULT_CSS_DARK" "inline:$DEFAULT_CSS_DYNAMIC" "")
+theme_scripts=("" "" "" "")
 custom_transform_names=()
 custom_transform_exprs=()
+config_scripts=()
 config_args=()
 if [[ -n "$config_file" && -f "$config_file" ]]; then
   config_dir="$(cd "$(dirname "$config_file")" && pwd)"
@@ -93,18 +118,30 @@ if [[ -n "$config_file" && -f "$config_file" ]]; then
     [[ -z "${line// }" ]] && continue
     if [[ "$line" =~ ^\[themes\] ]]; then in_section=themes; continue; fi
     if [[ "$line" =~ ^\[filename-transforms\] ]]; then in_section=ft; continue; fi
+    if [[ "$line" =~ ^\[scripts\] ]]; then in_section=scripts; continue; fi
     if [[ "$line" =~ ^\[ ]]; then in_section=""; fi
     if [[ "$in_section" == "themes" ]]; then
-      read -r tname turl <<< "$line"
-      if [[ -n "$tname" && -n "$turl" ]]; then
-        # Resolve relative paths against config file directory
-        [[ "$turl" != /* && "$turl" != http* && -f "$config_dir/$turl" ]] && turl="$config_dir/$turl"
+      read -r tname trest <<< "$line"
+      if [[ -n "$tname" && -n "$trest" ]]; then
+        tstyles=""; tscripts=""
+        for asset in $trest; do
+          if [[ "$asset" == script-link:* ]]; then
+            ref="${asset#script-link:}"
+            [[ "$ref" != /* && "$ref" != http* && -f "$config_dir/$ref" ]] && ref="$config_dir/$ref"
+            tscripts+="${tscripts:+ }link:$ref"
+          elif [[ "$asset" == script:* ]]; then
+            ref="${asset#script:}"
+            [[ "$ref" != /* && "$ref" != http* && -f "$config_dir/$ref" ]] && ref="$config_dir/$ref"
+            tscripts+="${tscripts:+ }inline:$ref"
+          else
+            [[ "$asset" != /* && "$asset" != http* && -f "$config_dir/$asset" ]] && asset="$config_dir/$asset"
+            if [[ -f "$asset" ]]; then tstyles+="${tstyles:+ }inline:$asset"
+            else tstyles+="${tstyles:+ }link:$asset"; fi
+          fi
+        done
         theme_names+=("$tname")
-        if [[ -f "$turl" ]]; then
-          theme_styles+=("inline:$turl")
-        else
-          theme_styles+=("link:$turl")
-        fi
+        theme_styles+=("$tstyles")
+        theme_scripts+=("$tscripts")
       fi
     elif [[ "$in_section" == "ft" ]]; then
       ftname="${line%% *}"
@@ -112,6 +149,17 @@ if [[ -n "$config_file" && -f "$config_file" ]]; then
       if [[ -n "$ftname" && -n "$ftexpr" ]]; then
         custom_transform_names+=("$ftname")
         custom_transform_exprs+=("$ftexpr")
+      fi
+    elif [[ "$in_section" == "scripts" ]]; then
+      # Resolve relative paths against config file directory
+      val="$line"
+      if [[ "$val" == link:* ]]; then
+        ref="${val#link:}"
+        [[ "$ref" != /* && "$ref" != http* && -f "$config_dir/$ref" ]] && ref="$config_dir/$ref"
+        config_scripts+=("link:$ref")
+      else
+        [[ "$val" != /* && "$val" != http* && -f "$config_dir/$val" ]] && val="$config_dir/$val"
+        config_scripts+=("inline:$val")
       fi
     else
       # shellcheck disable=SC2206
@@ -133,8 +181,7 @@ set -- "${config_args[@]+"${config_args[@]}"}" "${cli_args[@]+"${cli_args[@]}"}"
 # Ordered style entries: "inline:<path>" or "link:<file|url>"
 styles=()
 inputs=()
-script_file=""
-script_external=""
+scripts=("${config_scripts[@]+"${config_scripts[@]}"}")
 filename_transforms=()
 pdf_engine=""
 page_size="letter"
@@ -142,6 +189,7 @@ page_margin="1in"
 theme=""
 output=""
 rewrite_links=true
+keep_theme=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h|--help) help ;;
@@ -155,14 +203,15 @@ while [[ $# -gt 0 ]]; do
       else
         shift
       fi ;;
-    --script) script_file="$2"; shift 2 ;;
-    --script-link) script_external="$2"; shift 2 ;;
+    --script) scripts+=("inline:$2"); shift 2 ;;
+    --script-link) scripts+=("link:$2"); shift 2 ;;
     --pdf-engine) pdf_engine="$2"; shift 2 ;;
     --page-size) page_size="$2"; shift 2 ;;
     --margin) page_margin="$2"; shift 2 ;;
     --theme) theme="$2"; shift 2 ;;
     --filename-transform) filename_transforms+=("$2"); shift 2 ;;
     --no-rewrite-links) rewrite_links=false; shift ;;
+    --keep-theme) keep_theme=true; shift ;;
     *) echo "Unknown option: $1" >&2; echo "Run 'muck --help' for usage." >&2; exit 1 ;;
   esac
 done
@@ -196,10 +245,12 @@ fi
 # Default: apply theme, then any explicit styles on top
 [[ -z "$theme" ]] && theme="dynamic"
 theme_style=""
+theme_script=""
 theme_found=false
 for ((i=0; i<${#theme_names[@]}; i++)); do
   if [[ "${theme_names[$i]}" == "$theme" ]]; then
     theme_style="${theme_styles[$i]}"
+    theme_script="${theme_scripts[$i]}"
     theme_found=true
     break
   fi
@@ -207,10 +258,18 @@ done
 if ! $theme_found; then
   echo "Error: unknown theme '$theme'. Available: ${theme_names[*]}" >&2; exit 1
 fi
-if [[ ${#styles[@]} -eq 0 && -n "$theme_style" ]]; then
-  styles=("$theme_style")
-elif [[ -n "$theme_style" ]]; then
-  styles=("$theme_style" "${styles[@]}")
+# Expand space-separated theme assets into arrays
+theme_style_arr=()
+[[ -n "$theme_style" ]] && read -ra theme_style_arr <<< "$theme_style"
+theme_script_arr=()
+[[ -n "$theme_script" ]] && read -ra theme_script_arr <<< "$theme_script"
+if [[ ${#styles[@]} -eq 0 ]]; then
+  styles=("${theme_style_arr[@]+"${theme_style_arr[@]}"}")
+elif $keep_theme && [[ ${#theme_style_arr[@]} -gt 0 ]]; then
+  styles=("${theme_style_arr[@]}" "${styles[@]}")
+fi
+if [[ ${#theme_script_arr[@]} -gt 0 ]]; then
+  scripts=("${theme_script_arr[@]}" "${scripts[@]+"${scripts[@]}"}")
 fi
 
 for input in "${inputs[@]}"; do
@@ -266,20 +325,16 @@ if $rewrite_links; then
   body=$(echo "$body" | sed -E 's/(href="[^"]*\.)md(["#])/\1html\2/g')
 fi
 
-# Script tags
-script_tag=""
-if [[ -n "$script_file" ]]; then
-  [[ -f "$script_file" ]] || { echo "Error: $script_file not found" >&2; exit 1; }
-  script_tag="<script>$(cat "$script_file")</script>"
-fi
-
 # Check if we need an output folder
 use_folder=false
 for s in ${styles[@]+"${styles[@]}"}; do
   val="${s#*:}"
   [[ "$s" == link:* && -f "$val" ]] && use_folder=true
 done
-[[ -n "$script_external" && -f "$script_external" ]] && use_folder=true
+for s in ${scripts[@]+"${scripts[@]}"}; do
+  val="${s#*:}"
+  [[ "$s" == link:* && -f "$val" ]] && use_folder=true
+done
 
 if $use_folder; then
   out_dir="${cur_output%.html}"
@@ -308,17 +363,24 @@ for s in ${styles[@]+"${styles[@]}"}; do
   fi
 done
 
-# External script
-ext_script_tag=""
-if [[ -n "$script_external" ]]; then
-  if [[ -f "$script_external" ]]; then
-    js_name="$(basename "$script_external")"
-    cp "$script_external" "$out_dir/$js_name"
-    ext_script_tag="<script src=\"$js_name\"></script>"
+# Build script tags in order
+script_tags=""
+for s in ${scripts[@]+"${scripts[@]}"}; do
+  type="${s%%:*}"
+  val="${s#*:}"
+  if [[ "$type" == "inline" ]]; then
+    [[ -f "$val" ]] || { echo "Error: script $val not found" >&2; exit 1; }
+    script_tags+="<script>$(cat "$val")</script>"
   else
-    ext_script_tag="<script src=\"$script_external\"></script>"
+    if [[ -f "$val" ]]; then
+      js_name="$(basename "$val")"
+      cp "$val" "$out_dir/$js_name"
+      script_tags+="<script src=\"$js_name\"></script>"
+    else
+      script_tags+="<script src=\"$val\"></script>"
+    fi
   fi
-fi
+done
 
 # PDF-specific styles
 if [[ "$cur_output" == *.pdf ]] || [[ -n "$pdf_engine" ]]; then
@@ -337,7 +399,7 @@ cat > "$out_file" <<EOF
 $style_html$pdf_style</head>
 <body$body_style>
 $body
-$script_tag$ext_script_tag</body>
+$script_tags</body>
 </html>
 EOF
 
