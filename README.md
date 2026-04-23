@@ -52,6 +52,8 @@ Other supported engines include [wkhtmltopdf](https://wkhtmltopdf.org) and LaTeX
 - `muck-dynamic.min.css` — bundled stylesheet (dynamic, auto light/dark)
 - `muck-light.min.css` — light-only stylesheet
 - `muck-dark.min.css` — dark-only stylesheet
+- `muck-nav.css` — sidebar navigation stylesheet (used by the `nav` theme)
+- `muck-nav.js` — sidebar navigation script (used by the `nav` theme)
 - `install.sh` — one-step installer
 - `uninstall.sh` — removes muck from your system
 
@@ -62,9 +64,9 @@ cd ~/projects/personal/muck
 ./install.sh
 ```
 
-This installs the scripts and stylesheet:
+This installs the scripts and stylesheets:
 - Scripts → `~/.local/bin/muck` and `~/.local/bin/muck-serve`
-- Stylesheet → `~/.local/bin/muck-dynamic.min.css`
+- Stylesheets → `~/.local/bin/muck-dynamic.min.css` (and light, dark, nav variants)
 
 ## Usage
 
@@ -156,8 +158,17 @@ muck -i notes.md --theme dark
 # No theme
 muck -i notes.md --theme none
 
+# Sidebar navigation theme (great for multi-file directories)
+muck -i ./docs/ -o ./output/ --mirror-structure --theme nav
+
 # Use a custom theme (defined in config)
 muck -i notes.md --theme dracula
+```
+
+The `nav` theme adds a sidebar to every page showing the full file tree, with the current page highlighted. It works best when converting a directory with `--mirror-structure`. For live preview:
+
+```bash
+muck-serve -i ./docs/ --mirror-structure --open -- --theme nav
 ```
 
 ### Filename transforms
@@ -220,7 +231,7 @@ Press `Ctrl+C` to stop the server.
 | `--page-size SIZE` | | PDF page size (default: `letter`) |
 | `--margin MARGIN` | | PDF page margin (default: `1in`) |
 | `--config FILE` | `-c FILE` | Use a specific config file |
-| `--theme NAME` | | Apply a theme (default: `dynamic`). Built-in: `light`, `dark`, `dynamic`, `none` |
+| `--theme NAME` | | Apply a theme (default: `dynamic`). Built-in: `light`, `dark`, `dynamic`, `nav`, `none` |
 | `--filename-transform T` | | Transform output filename (repeatable). Presets: `lowercase`, `kebab`, `snake` |
 | `--no-rewrite-links` | | Don't rewrite `.md` links to `.html` in output |
 | `--keep-theme` | | Keep the default theme when `-s`/`--style-link` is used |
@@ -280,7 +291,7 @@ fancy ./style.css ./extra.css script:./toggle.js
 mixed ./style.css script:./a.js script-link:https://cdn.example.com/lib.js
 ```
 
-Theme assets are applied first; any additional `-s`/`--style-link`/`--script`/`--script-link` options layer on top. Built-in themes (`light`, `dark`, `dynamic`, `none`) are always available.
+Theme assets are applied first; any additional `-s`/`--style-link`/`--script`/`--script-link` options layer on top. Built-in themes (`light`, `dark`, `dynamic`, `nav`, `none`) are always available.
 
 ### Custom filename transforms
 

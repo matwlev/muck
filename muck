@@ -6,6 +6,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEFAULT_CSS_LIGHT="$SCRIPT_DIR/muck-light.min.css"
 DEFAULT_CSS_DARK="$SCRIPT_DIR/muck-dark.min.css"
 DEFAULT_CSS_DYNAMIC="$SCRIPT_DIR/muck-dynamic.min.css"
+DEFAULT_CSS_NAV="$SCRIPT_DIR/muck-nav.css"
+DEFAULT_JS_NAV="$SCRIPT_DIR/muck-nav.js"
 
 
 help() {
@@ -36,7 +38,7 @@ Options:
   -c, --config <file>       Use a specific config file. Defaults to
                             ./muck.config, then ~/.muck/config
   --theme <name>            Apply a theme (default: dynamic). Built-in:
-                            light, dark, dynamic, none.
+                            light, dark, dynamic, nav, none.
                             Custom themes defined in config [themes] section.
   --filename-transform <t>  Transform the output filename (repeatable).
                             Presets: lowercase, kebab, snake.
@@ -88,6 +90,7 @@ Examples:
   muck -i ~/docs/*.md                            # Convert all .md files in a dir
   muck -i ~/docs/*.md -o ./output/               # Output all to a directory
   muck -i ~/docs/ -o ./output/ --mirror-structure # Preserve directory structure
+  muck -i ./docs/ -o ./output/ --mirror-structure --theme nav  # Sidebar nav
 EOF
   exit 0
 }
@@ -106,9 +109,9 @@ if [[ -z "$config_file" ]]; then
 fi
 
 # Load config: parse [themes] and [filename-transforms] sections separately, rest becomes default args
-theme_names=(light dark dynamic none)
-theme_styles=("inline:$DEFAULT_CSS_LIGHT" "inline:$DEFAULT_CSS_DARK" "inline:$DEFAULT_CSS_DYNAMIC" "")
-theme_scripts=("" "" "" "")
+theme_names=(light dark dynamic none nav)
+theme_styles=("inline:$DEFAULT_CSS_LIGHT" "inline:$DEFAULT_CSS_DARK" "inline:$DEFAULT_CSS_DYNAMIC" "" "inline:$DEFAULT_CSS_DYNAMIC inline:$DEFAULT_CSS_NAV")
+theme_scripts=("" "" "" "" "inline:$DEFAULT_JS_NAV")
 custom_transform_names=()
 custom_transform_exprs=()
 config_scripts=()
@@ -283,6 +286,62 @@ if [[ ${#theme_script_arr[@]} -gt 0 ]]; then
   scripts=("${theme_script_arr[@]}" "${scripts[@]+"${scripts[@]}"}")
 fi
 
+
+# Build nav JSON tree (used by the nav theme)
+# Produces a nested structure mirroring the output directory layout.
+build_nav_json() {
+  local _output_dir=$1
+  local _mirror=$2
+  shift 2
+  # remaining args: interleaved src root src root ...
+  local paths=()
+  while [[ $# -gt 0 ]]; do
+    local src="$1" root="$2"; shift 2
+    if [[ "$_mirror" == true && -n "$root" ]]; then
+      local abs_src rel
+      abs_src="$(cd "$(dirname "$src")" && pwd)/$(basename "$src")"
+      rel="${abs_src#$root/}"
+      paths+=("${rel%.md}.html")
+    else
+      paths+=("$(basename "${src%.md}.html")")
+    fi
+  done
+
+  python3 - "${paths[@]}" <<'PYEOF'
+import sys, json, os
+paths = sys.argv[1:]
+def insert(tree, parts, full_path):
+    if len(parts) == 1:
+        tree.append({"label": os.path.splitext(parts[0])[0], "path": "/" + full_path})
+    else:
+        for node in tree:
+            if node.get("label") == parts[0] and "children" in node:
+                insert(node["children"], parts[1:], full_path)
+                return
+        node = {"label": parts[0], "children": []}
+        tree.append(node)
+        insert(node["children"], parts[1:], full_path)
+root = []
+for p in sorted(paths):
+    insert(root, p.split("/"), p)
+print(json.dumps(root))
+PYEOF
+}
+
+nav_json=""
+# Build nav JSON if the nav theme is active (muck-nav.js is in scripts)
+for s in "${scripts[@]+"${scripts[@]}"}"; do
+  if [[ "${s#*:}" == *muck-nav.js ]]; then
+    # Interleave inputs and input_roots as positional args
+    nav_args=()
+    for ((i=0; i<${#inputs[@]}; i++)); do
+      nav_args+=("${inputs[$i]}" "${input_roots[$i]:-}")
+    done
+    nav_json="$(build_nav_json "${output_dir:-}" "$mirror_structure" "${nav_args[@]}")"
+    break
+  fi
+done
+
 for ((input_idx=0; input_idx<${#inputs[@]}; input_idx++)); do
 input="${inputs[$input_idx]}"
 input_root="${input_roots[$input_idx]:-}"
@@ -417,6 +476,9 @@ else
   body_style=" style=\"max-width:800px;margin:auto;padding:2em;\""
 fi
 
+nav_data_tag=""
+[[ -n "$nav_json" ]] && nav_data_tag="<script id=\"muck-nav-data\" type=\"application/json\">$nav_json</script>"
+
 cat > "$out_file" <<EOF
 <!DOCTYPE html>
 <html lang="en">
@@ -425,7 +487,7 @@ cat > "$out_file" <<EOF
 $style_html$pdf_style</head>
 <body$body_style>
 $body
-$script_tags</body>
+$nav_data_tag$script_tags</body>
 </html>
 EOF
 

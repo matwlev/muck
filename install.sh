@@ -11,6 +11,8 @@ chmod +x "$HOME/.local/bin/muck-serve"
 cp "$SCRIPT_DIR/muck-dynamic.min.css" "$HOME/.local/bin/muck-dynamic.min.css"
 cp "$SCRIPT_DIR/muck-light.min.css" "$HOME/.local/bin/muck-light.min.css"
 cp "$SCRIPT_DIR/muck-dark.min.css" "$HOME/.local/bin/muck-dark.min.css"
+cp "$SCRIPT_DIR/muck-nav.css" "$HOME/.local/bin/muck-nav.css"
+cp "$SCRIPT_DIR/muck-nav.js" "$HOME/.local/bin/muck-nav.js"
 
 # Add to PATH if needed
 if ! echo "$PATH" | grep -q "$HOME/.local/bin"; then
