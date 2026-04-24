@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-04-24
+
+### Added
+- CSS custom property theme system with two layers: fixed color options (`--muck-color-*`) and semantic intent tokens (`--muck-theme-palette-*`)
+- New theme variants: `nav-light`, `nav-dark`, `nav-dynamic`
+- `--no-theme` flag to suppress a config-set default theme for a single run
+- `install.sh --no-config` to skip `~/.muck/` setup entirely
+- `install.sh --reset-config` to overwrite an existing `~/.muck/`
+- `~/.muck/styles/` and `~/.muck/scripts/` directories for theme assets
+
+### Changed
+- **Breaking:** Default output is now plain unstyled HTML. Previously `dynamic` was applied by default. Set `--theme dynamic` in `~/.muck/config` to restore the old behavior (the default install does this automatically).
+- **Breaking:** `muck` no longer has any built-in theme knowledge. All themes (`light`, `dark`, `dynamic`, `nav-*`, `none`) are defined in `~/.muck/config` by the installer.
+- **Breaking:** `--theme none` replaced by `--no-theme`.
+- Theme assets moved from `~/.local/bin/` to `~/.muck/styles/` and `~/.muck/scripts/`.
+
+### Removed
+- Hardcoded `light`, `dark`, `dynamic`, `nav` theme definitions from the `muck` binary
+- `muck-light.min.css`, `muck-dark.min.css`, `muck-dynamic.min.css` replaced by unminified source files using CSS custom properties
+
 ## [1.1.0] - 2026-04-22
 
 ### Added

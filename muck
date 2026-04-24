@@ -1,97 +1,84 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="1.1.0"
+VERSION="2.0.0"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-DEFAULT_CSS_LIGHT="$SCRIPT_DIR/muck-light.min.css"
-DEFAULT_CSS_DARK="$SCRIPT_DIR/muck-dark.min.css"
-DEFAULT_CSS_DYNAMIC="$SCRIPT_DIR/muck-dynamic.min.css"
-DEFAULT_CSS_NAV="$SCRIPT_DIR/muck-nav.css"
-DEFAULT_JS_NAV="$SCRIPT_DIR/muck-nav.js"
 
 
 help() {
   cat <<'EOF'
-muck — convert Markdown to styled HTML or PDF
+muck — convert Markdown to HTML or PDF
 
 Usage:
   muck -i <input.md>... [-o <output>] [options]
 
 Options:
   -i, --input <file|dir>     Input Markdown file or directory (required,
-                            repeatable). Directories are expanded to all
-                            .md files within them.
-  -o, --output <file|dir>   Output file (.html or .pdf) or directory (with
-                            trailing /). Defaults to input filename with
-                            .html (or .pdf with --pdf-engine).
-  -s, --stylesheet <file>   Inline a CSS file into the document (repeatable)
-  --style-link [file|url]   Link a stylesheet instead of inlining (repeatable).
-                            Local files are copied to an output folder.
-  --script <file>           Inline a JavaScript file into the document
-                            (repeatable)
-  --script-link <file|url>  Link a JavaScript file or URL. Local files are
-                            copied to an output folder. (repeatable)
-  --pdf-engine <engine>     Generate PDF using the specified engine
-                            (default: weasyprint)
-  --page-size <size>        PDF page size (default: letter)
-  --margin <margin>         PDF page margin (default: 1in)
-  -c, --config <file>       Use a specific config file. Defaults to
-                            ./muck.config, then ~/.muck/config
-  --theme <name>            Apply a theme (default: dynamic). Built-in:
-                            light, dark, dynamic, nav, none.
-                            Custom themes defined in config [themes] section.
-  --filename-transform <t>  Transform the output filename (repeatable).
-                            Presets: lowercase, kebab, snake.
-                            Also accepts a sed expression or a custom
-                            transform name defined in the config file.
-  --no-rewrite-links        Don't rewrite .md links to .html in output
-  --keep-theme              Keep the default theme when -s/--style-link is used
-  --mirror-structure        When outputting to a directory, preserve the input
-                            directory structure in the output
-  --no-muck-script          Don't inject the muck script into the output
-  -h, --help                Show this help message
-  --version                 Show version
+                             repeatable). Directories are expanded to all
+                             .md files within them.
+  -o, --output <file|dir>    Output file (.html or .pdf) or directory (with
+                             trailing /). Defaults to input filename with .html.
+  -s, --stylesheet <file>    Inline a CSS file (repeatable)
+  --style-link [file|url]    Link a stylesheet (repeatable). Local files are
+                             copied to an output folder.
+  --script <file>            Inline a JavaScript file (repeatable)
+  --script-link <file|url>   Link a JavaScript file or URL (repeatable). Local
+                             files are copied to an output folder.
+  --pdf-engine <engine>      PDF engine (default: weasyprint)
+  --page-size <size>         PDF page size (default: letter)
+  --margin <margin>          PDF page margin (default: 1in)
+  -c, --config <file>        Config file. Defaults to ./muck.config, then
+                             ~/.muck/config
+  --theme <name>             Apply a theme defined in config [themes]
+  --no-theme                 Suppress the config default theme for this run
+  --filename-transform <t>   Transform output filename (repeatable). Presets:
+                             lowercase, kebab, snake. Also accepts a sed
+                             expression or a name from config [filename-transforms]
+  --no-rewrite-links         Don't rewrite .md links to .html in output
+  --keep-theme               Keep config theme when -s/--style-link is also used
+  --mirror-structure         Preserve input directory structure in output
+  --no-muck-script           Don't inject the muck script into the output
+  -h, --help                 Show this help message
+  --version                  Show version
 
-Config File:
-  muck reads a config file (one option per line) before processing CLI args,
-  so CLI args always override config values. Example muck.config:
+Themes:
+  Themes are defined in your config file. install.sh creates ~/.muck/config
+  with light, dark, dynamic, nav-light, nav-dark, nav-dynamic, and none.
+  Set a default with --theme in your config. Override per-run with --theme
+  or suppress with --no-theme.
 
-    --stylesheet ./theme.css
+Config file (~/.muck/config or ./muck.config):
+  Options are listed one per line. CLI args always override config values.
+
+    --theme dynamic
     --page-size A4
-    --margin 2cm
 
-  [scripts] section — scripts applied to every conversion:
+  [themes] — define themes as a name followed by space-separated assets.
+  Unprefixed paths/URLs are stylesheets; script: inlines JS; script-link: links JS:
+
+    [themes]
+    dracula  https://cdn.example.com/dracula.css
+    fancy    ./style.css script:./toggle.js
+    none
+
+  [scripts] — scripts applied to every conversion:
 
     [scripts]
     ./analytics.js
     link:./app.js
-    https://cdn.example.com/lib.js
 
-  Each line is a file path (inlined) or URL (linked). Prefix with link: to
-  force linking a local file instead of inlining it.
+  [filename-transforms] — named sed transforms:
 
-  [themes] section — custom themes with stylesheets and/or scripts:
-
-    [themes]
-    dracula https://cdn.example.com/dracula.css
-    fancy ./style.css ./extra.css script:./toggle.js script-link:https://cdn.example.com/lib.js
-
-  Each line starts with a theme name followed by space-separated assets.
-  Unprefixed paths/URLs are stylesheets. script: inlines a JS file.
-  script-link: links a JS file or URL. Multiple assets of each type are
-  supported and applied in order.
+    [filename-transforms]
+    strip-draft  s/Draft_//
 
 Examples:
-  muck -i notes.md                              # HTML with inline styles
-  muck -i notes.md -s ./theme.css               # Custom stylesheet
-  muck -i notes.md --style-link https://cdn.example.com/style.css  # Link stylesheet
-  muck -i notes.md -o report.pdf                 # PDF via weasyprint
-  muck -i notes.md -o report.pdf --page-size A4  # PDF with A4 pages
-  muck -i ch1.md -i ch2.md -i ch3.md            # Convert multiple files
-  muck -i ~/docs/*.md                            # Convert all .md files in a dir
-  muck -i ~/docs/*.md -o ./output/               # Output all to a directory
-  muck -i ~/docs/ -o ./output/ --mirror-structure # Preserve directory structure
-  muck -i ./docs/ -o ./output/ --mirror-structure --theme nav  # Sidebar nav
+  muck -i notes.md                               # plain HTML, no theme
+  muck -i notes.md --theme dynamic               # with dynamic theme
+  muck -i notes.md -s ./theme.css                # custom stylesheet
+  muck -i notes.md -o report.pdf --page-size A4  # PDF
+  muck -i ch1.md -i ch2.md -i ch3.md            # multiple files
+  muck -i ./docs/ -o ./output/ --mirror-structure --theme nav-dynamic
 EOF
   exit 0
 }
@@ -110,9 +97,9 @@ if [[ -z "$config_file" ]]; then
 fi
 
 # Load config: parse [themes] and [filename-transforms] sections separately, rest becomes default args
-theme_names=(light dark dynamic none nav)
-theme_styles=("inline:$DEFAULT_CSS_LIGHT" "inline:$DEFAULT_CSS_DARK" "inline:$DEFAULT_CSS_DYNAMIC" "" "inline:$DEFAULT_CSS_DYNAMIC inline:$DEFAULT_CSS_NAV")
-theme_scripts=("" "" "" "" "inline:$DEFAULT_JS_NAV")
+theme_names=()
+theme_styles=()
+theme_scripts=()
 custom_transform_names=()
 custom_transform_exprs=()
 config_scripts=()
@@ -195,6 +182,7 @@ pdf_engine=""
 page_size="letter"
 page_margin="1in"
 theme=""
+no_theme=false
 output=""
 rewrite_links=true
 keep_theme=false
@@ -219,6 +207,7 @@ while [[ $# -gt 0 ]]; do
     --page-size) page_size="$2"; shift 2 ;;
     --margin) page_margin="$2"; shift 2 ;;
     --theme) theme="$2"; shift 2 ;;
+    --no-theme) no_theme=true; shift ;;
     --filename-transform) filename_transforms+=("$2"); shift 2 ;;
     --no-rewrite-links) rewrite_links=false; shift ;;
     --keep-theme) keep_theme=true; shift ;;
@@ -259,34 +248,33 @@ if [[ -n "$output" ]]; then
   fi
 fi
 
-# Default: apply theme, then any explicit styles on top
-[[ -z "$theme" ]] && theme="dynamic"
-theme_style=""
-theme_script=""
-theme_found=false
-for ((i=0; i<${#theme_names[@]}; i++)); do
-  if [[ "${theme_names[$i]}" == "$theme" ]]; then
-    theme_style="${theme_styles[$i]}"
-    theme_script="${theme_scripts[$i]}"
-    theme_found=true
-    break
+# Apply theme if set (--no-theme suppresses even a config-set theme)
+if $no_theme; then theme=""; fi
+if [[ -n "$theme" ]]; then
+  theme_style=""
+  theme_script=""
+  theme_found=false
+  for ((i=0; i<${#theme_names[@]}; i++)); do
+    if [[ "${theme_names[$i]}" == "$theme" ]]; then
+      theme_style="${theme_styles[$i]}"
+      theme_script="${theme_scripts[$i]}"
+      theme_found=true
+      break
+    fi
+  done
+  $theme_found || { echo "Error: unknown theme '$theme'. Available: ${theme_names[*]}" >&2; exit 1; }
+  theme_style_arr=()
+  [[ -n "$theme_style" ]] && read -ra theme_style_arr <<< "$theme_style"
+  theme_script_arr=()
+  [[ -n "$theme_script" ]] && read -ra theme_script_arr <<< "$theme_script"
+  if [[ ${#styles[@]} -eq 0 ]]; then
+    styles=("${theme_style_arr[@]+"${theme_style_arr[@]}"}")
+  elif $keep_theme && [[ ${#theme_style_arr[@]} -gt 0 ]]; then
+    styles=("${theme_style_arr[@]}" "${styles[@]}")
   fi
-done
-if ! $theme_found; then
-  echo "Error: unknown theme '$theme'. Available: ${theme_names[*]}" >&2; exit 1
-fi
-# Expand space-separated theme assets into arrays
-theme_style_arr=()
-[[ -n "$theme_style" ]] && read -ra theme_style_arr <<< "$theme_style"
-theme_script_arr=()
-[[ -n "$theme_script" ]] && read -ra theme_script_arr <<< "$theme_script"
-if [[ ${#styles[@]} -eq 0 ]]; then
-  styles=("${theme_style_arr[@]+"${theme_style_arr[@]}"}")
-elif $keep_theme && [[ ${#theme_style_arr[@]} -gt 0 ]]; then
-  styles=("${theme_style_arr[@]}" "${styles[@]}")
-fi
-if [[ ${#theme_script_arr[@]} -gt 0 ]]; then
-  scripts=("${theme_script_arr[@]}" "${scripts[@]+"${scripts[@]}"}")
+  if [[ ${#theme_script_arr[@]} -gt 0 ]]; then
+    scripts=("${theme_script_arr[@]}" "${scripts[@]+"${scripts[@]}"}")
+  fi
 fi
 
 

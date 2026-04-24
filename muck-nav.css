@@ -1,29 +1,20 @@
+/* muck-nav.css — sidebar navigation
+   Requires muck-colors.css + a theme file (muck-light/dark/dynamic.css). */
+
 :root {
   --nav-width: 220px;
-  --nav-bg: #f5f5f5;
-  --nav-border: #ddd;
-  --nav-text: #333;
-  --nav-active-bg: #e0e0e0;
-  --nav-hover-bg: #eaeaea;
   --nav-font: system-ui, sans-serif;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --nav-bg: #1e1e1e;
-    --nav-border: #333;
-    --nav-text: #ccc;
-    --nav-active-bg: #2e2e2e;
-    --nav-hover-bg: #2a2a2a;
-  }
-}
+
 #muck-nav {
   position: fixed;
   top: 0; left: 0;
   width: var(--nav-width);
   height: 100vh;
   overflow-y: auto;
-  background: var(--nav-bg);
-  border-right: 1px solid var(--nav-border);
+  background: var(--muck-theme-palette-canvas-subtle);
+  border-right: 1px solid var(--muck-theme-palette-border-default);
+  color: var(--muck-theme-palette-fg-default);
   font-family: var(--nav-font);
   font-size: 0.875rem;
   padding: 1rem 0;
@@ -39,22 +30,25 @@
 #muck-nav a {
   display: block;
   padding: 0.3rem 1rem;
-  color: var(--nav-text);
+  color: var(--muck-theme-palette-fg-default);
   text-decoration: none;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-#muck-nav a:hover { background: var(--nav-hover-bg); }
-#muck-nav a.active { background: var(--nav-active-bg); font-weight: bold; }
+#muck-nav a:hover { background: var(--muck-theme-palette-neutral-muted); }
+#muck-nav a.active {
+  background: var(--muck-theme-palette-primary-main);
+  color: var(--muck-theme-palette-primary-contrast);
+  font-weight: bold;
+}
 #muck-nav .nav-dir > span {
   display: block;
   padding: 0.4rem 1rem 0.2rem;
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--nav-text);
-  opacity: 0.6;
+  color: var(--muck-theme-palette-fg-subtle);
 }
 #muck-nav .nav-dir > ul { padding-left: 0.75rem; }
 body { margin-left: var(--nav-width); }

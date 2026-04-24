@@ -3,7 +3,6 @@ set -euo pipefail
 
 rm -f "$HOME/.local/bin/muck"
 rm -f "$HOME/.local/bin/muck-serve"
-rm -f "$HOME/.local/bin/github-markdown.min.css"
 rm -rf "$HOME/.muck"
 
 echo "muck uninstalled."

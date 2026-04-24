@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="1.1.0"
+VERSION="2.0.0"
 PORT=8080
 INPUTS=()
 OPEN=false
@@ -29,6 +29,10 @@ Options:
   -h, --help              Show this help message
   --version               Show version
   --                      Pass remaining arguments to muck (e.g. stylesheets)
+
+Note:
+  muck-serve invokes muck for each conversion, so defaults in ~/.muck/config
+  (including --theme) apply automatically.
 
 Examples:
   muck-serve -i notes.md

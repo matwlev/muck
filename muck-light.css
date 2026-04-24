@@ -1,0 +1,45 @@
+/* muck-light.css — light theme intent mappings
+   Requires muck-colors.css.
+   Apply to :root or [data-theme="light"]. */
+
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* Canvas — page surfaces */
+  --muck-theme-palette-canvas-default: var(--muck-color-gray-100);
+  --muck-theme-palette-canvas-subtle:  var(--muck-color-gray-95);
+
+  /* Foreground — text */
+  --muck-theme-palette-fg-default: var(--muck-color-gray-85);
+  --muck-theme-palette-fg-muted:   var(--muck-color-gray-60);
+  --muck-theme-palette-fg-subtle:  var(--muck-color-gray-40);
+
+  /* Border */
+  --muck-theme-palette-border-default: var(--muck-color-gray-90);
+  --muck-theme-palette-border-muted:   var(--muck-color-gray-88);
+
+  /* Neutral muted (inline code bg, kbd) */
+  --muck-theme-palette-neutral-muted: var(--muck-color-gray-muted-light);
+
+  /* Primary — links, focus, accents */
+  --muck-theme-palette-primary-main:     var(--muck-color-blue-30);
+  --muck-theme-palette-primary-contrast: var(--muck-color-gray-100);
+
+  /* Success */
+  --muck-theme-palette-success-main:     var(--muck-color-green-40);
+  --muck-theme-palette-success-contrast: var(--muck-color-gray-100);
+
+  /* Attention */
+  --muck-theme-palette-attention-main:     var(--muck-color-yellow-20);
+  --muck-theme-palette-attention-contrast: var(--muck-color-gray-100);
+  --muck-theme-palette-attention-subtle:   var(--muck-color-yellow-90);
+
+  /* Danger */
+  --muck-theme-palette-danger-main:     var(--muck-color-red-30);
+  --muck-theme-palette-danger-contrast: var(--muck-color-gray-100);
+
+  /* Done */
+  --muck-theme-palette-done-main:     var(--muck-color-purple-30);
+  --muck-theme-palette-done-contrast: var(--muck-color-gray-100);
+}

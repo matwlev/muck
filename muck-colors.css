@@ -1,0 +1,82 @@
+/* muck-colors.css — fixed color options scale
+   These never change between themes. Intents map to these.
+   Scale: 0 (darkest) → 100 (lightest) */
+
+:root {
+  /* Gray */
+  --muck-color-gray-0:   #0d1117;
+  --muck-color-gray-5:   #161b22;
+  --muck-color-gray-10:  #21262d;
+  --muck-color-gray-20:  #30363d;
+  --muck-color-gray-30:  #484f58;
+  --muck-color-gray-40:  #6e7781;
+  --muck-color-gray-50:  #8c959f;
+  --muck-color-gray-60:  #656d76;
+  --muck-color-gray-70:  #57606a;
+  --muck-color-gray-80:  #24292f;
+  --muck-color-gray-85:  #1f2328;
+  --muck-color-gray-88:  hsla(210, 18%, 87%, 1);
+  --muck-color-gray-90:  #d0d7de;
+  --muck-color-gray-95:  #f6f8fa;
+  --muck-color-gray-97:  #e6edf3;
+  --muck-color-gray-100: #ffffff;
+  --muck-color-gray-muted-light: rgba(175, 184, 193, 0.2);
+  --muck-color-gray-muted-dark:  rgba(110, 118, 129, 0.4);
+
+  /* Blue */
+  --muck-color-blue-10:  #0a3069;
+  --muck-color-blue-20:  #0550ae;
+  --muck-color-blue-30:  #0969da;
+  --muck-color-blue-40:  #1158c7;
+  --muck-color-blue-50:  #1f6feb;
+  --muck-color-blue-60:  #2f81f7;
+  --muck-color-blue-70:  #79c0ff;
+  --muck-color-blue-80:  #a5d6ff;
+
+  /* Green */
+  --muck-color-green-10:  #033a16;
+  --muck-color-green-20:  #116329;
+  --muck-color-green-30:  #1a7f37;
+  --muck-color-green-40:  #1f883d;
+  --muck-color-green-50:  #238636;
+  --muck-color-green-60:  #3fb950;
+  --muck-color-green-70:  #7ee787;
+  --muck-color-green-80:  #aff5b4;
+  --muck-color-green-90:  #dafbe1;
+
+  /* Red */
+  --muck-color-red-10:  #67060c;
+  --muck-color-red-15:  #82071e;
+  --muck-color-red-20:  #8e1519;
+  --muck-color-red-25:  #b62324;
+  --muck-color-red-30:  #cf222e;
+  --muck-color-red-35:  #d1242f;
+  --muck-color-red-40:  #da3633;
+  --muck-color-red-50:  #f85149;
+  --muck-color-red-60:  #ff7b72;
+  --muck-color-red-80:  #ffdcd7;
+  --muck-color-red-90:  #ffebe9;
+
+  /* Orange */
+  --muck-color-orange-10:  #5a1e02;
+  --muck-color-orange-20:  #953800;
+  --muck-color-orange-30:  #9e6a03;
+  --muck-color-orange-40:  #3b2300;
+  --muck-color-orange-60:  #ffa657;
+  --muck-color-orange-80:  #ffdfb6;
+  --muck-color-orange-90:  #ffd8b5;
+
+  /* Yellow */
+  --muck-color-yellow-20:  #9a6700;
+  --muck-color-yellow-50:  #d29922;
+  --muck-color-yellow-60:  #f2cc60;
+  --muck-color-yellow-90:  #fff8c5;
+  --muck-color-yellow-subtle-dark: rgba(187, 128, 9, 0.15);
+
+  /* Purple */
+  --muck-color-purple-20:  #6639ba;
+  --muck-color-purple-30:  #8250df;
+  --muck-color-purple-40:  #8957e5;
+  --muck-color-purple-60:  #a371f7;
+  --muck-color-purple-70:  #d2a8ff;
+}
