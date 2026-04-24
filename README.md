@@ -171,6 +171,27 @@ The `nav` theme adds a sidebar to every page showing the full file tree, with th
 muck-serve -i ./docs/ --mirror-structure --open -- --theme nav
 ```
 
+### muck script
+
+Every conversion injects a `const muck` into the top of `<body>` before any other scripts:
+
+```js
+const muck = {
+  tree: [ /* nested file tree */ ],
+  current: "/path/to/current.html"
+};
+```
+
+`tree` is a nested array representing the full set of converted files. Each node is either a file (`{ label, path }`) or a directory (`{ label, children }`). `current` is the root-relative path of the page being rendered.
+
+Any script can use this data to build navigation, breadcrumbs, or anything else. The `nav` theme's `muck-nav.js` uses it to render the sidebar.
+
+To suppress the injected script:
+
+```bash
+muck -i notes.md --no-muck-script
+```
+
 ### Filename transforms
 
 ```bash
@@ -236,6 +257,7 @@ Press `Ctrl+C` to stop the server.
 | `--no-rewrite-links` | | Don't rewrite `.md` links to `.html` in output |
 | `--keep-theme` | | Keep the default theme when `-s`/`--style-link` is used |
 | `--mirror-structure` | | Preserve input directory structure in output directory |
+| `--no-muck-script` | | Don't inject the `muck` script into the output |
 | `--help` | `-h` | Show help |
 | `--version` | | Show version |
 

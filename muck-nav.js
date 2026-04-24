@@ -1,11 +1,7 @@
 (function () {
-  var el = document.getElementById('muck-nav-data');
-  if (!el) return;
-  var tree;
-  try { tree = JSON.parse(el.textContent); } catch (e) { return; }
-
-  // Normalize current path for comparison
-  var cur = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (typeof muck === 'undefined' || !muck.tree) return;
+  var tree = muck.tree;
+  var cur = (muck.current || window.location.pathname).replace(/\/+$/, '') || '/';
 
   function buildList(nodes) {
     var ul = document.createElement('ul');
@@ -21,9 +17,7 @@
         var a = document.createElement('a');
         a.href = node.path;
         a.textContent = node.label;
-        // Highlight active: exact root-relative match
-        var nodePath = node.path.replace(/\/+$/, '');
-        if (cur === nodePath) a.className = 'active';
+        if (cur === node.path.replace(/\/+$/, '')) a.className = 'active';
         li.appendChild(a);
       }
       ul.appendChild(li);

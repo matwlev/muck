@@ -48,6 +48,7 @@ Options:
   --keep-theme              Keep the default theme when -s/--style-link is used
   --mirror-structure        When outputting to a directory, preserve the input
                             directory structure in the output
+  --no-muck-script          Don't inject the muck script into the output
   -h, --help                Show this help message
   --version                 Show version
 
@@ -198,6 +199,7 @@ output=""
 rewrite_links=true
 keep_theme=false
 mirror_structure=false
+no_muck_script=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h|--help) help ;;
@@ -221,6 +223,7 @@ while [[ $# -gt 0 ]]; do
     --no-rewrite-links) rewrite_links=false; shift ;;
     --keep-theme) keep_theme=true; shift ;;
     --mirror-structure) mirror_structure=true; shift ;;
+    --no-muck-script) no_muck_script=true; shift ;;
     *) echo "Unknown option: $1" >&2; echo "Run 'muck --help' for usage." >&2; exit 1 ;;
   esac
 done
@@ -328,19 +331,15 @@ print(json.dumps(root))
 PYEOF
 }
 
-nav_json=""
-# Build nav JSON if the nav theme is active (muck-nav.js is in scripts)
-for s in "${scripts[@]+"${scripts[@]}"}"; do
-  if [[ "${s#*:}" == *muck-nav.js ]]; then
-    # Interleave inputs and input_roots as positional args
-    nav_args=()
-    for ((i=0; i<${#inputs[@]}; i++)); do
-      nav_args+=("${inputs[$i]}" "${input_roots[$i]:-}")
-    done
-    nav_json="$(build_nav_json "${output_dir:-}" "$mirror_structure" "${nav_args[@]}")"
-    break
-  fi
-done
+tree_json=""
+if ! $no_muck_script; then
+  # Interleave inputs and input_roots as positional args
+  tree_args=()
+  for ((i=0; i<${#inputs[@]}; i++)); do
+    tree_args+=("${inputs[$i]}" "${input_roots[$i]:-}")
+  done
+  tree_json="$(build_nav_json "${output_dir:-}" "$mirror_structure" "${tree_args[@]}")"
+fi
 
 for ((input_idx=0; input_idx<${#inputs[@]}; input_idx++)); do
 input="${inputs[$input_idx]}"
@@ -476,8 +475,18 @@ else
   body_style=" style=\"max-width:800px;margin:auto;padding:2em;\""
 fi
 
-nav_data_tag=""
-[[ -n "$nav_json" ]] && nav_data_tag="<script id=\"muck-nav-data\" type=\"application/json\">$nav_json</script>"
+muck_script=""
+if [[ -n "$tree_json" ]]; then
+  # Compute root-relative path for the current file
+  if $mirror_structure && [[ -n "$output_dir" && -n "$input_root" ]]; then
+    abs_input="$(cd "$(dirname "$input")" && pwd)/$(basename "$input")"
+    rel="${abs_input#$input_root/}"
+    cur_path="/${rel%.md}.html"
+  else
+    cur_path="/$(basename "${input%.md}.html")"
+  fi
+  muck_script="<script>const muck = { tree: $tree_json, current: \"$cur_path\" };</script>"
+fi
 
 cat > "$out_file" <<EOF
 <!DOCTYPE html>
@@ -486,8 +495,8 @@ cat > "$out_file" <<EOF
 <meta name="viewport" content="width=device-width, initial-scale=1">
 $style_html$pdf_style</head>
 <body$body_style>
-$body
-$nav_data_tag$script_tags</body>
+$muck_script$body
+$script_tags</body>
 </html>
 EOF
 
