@@ -34,6 +34,9 @@ Options:
   --filename-transform <t>   Transform output filename (repeatable). Presets:
                              lowercase, kebab, snake. Also accepts a sed
                              expression or a name from config [filename-transforms]
+  --id-transform <t>         Transform heading IDs (repeatable). Presets:
+                             lowercase, kebab, snake. Also accepts a sed
+                             expression.
   --no-rewrite-links         Don't rewrite .md links to .html in output
   --keep-theme               Keep config theme when -s/--style-link is also used
   --mirror-structure         Preserve input directory structure in output (default: on)
@@ -183,6 +186,7 @@ inputs=()
 input_roots=()
 scripts=("${config_scripts[@]+"${config_scripts[@]}"}")
 filename_transforms=()
+id_transforms=()
 pdf_engine=""
 page_size="letter"
 page_margin="1in"
@@ -214,6 +218,7 @@ while [[ $# -gt 0 ]]; do
     --theme) theme="$2"; shift 2 ;;
     --no-theme) no_theme=true; shift ;;
     --filename-transform) filename_transforms+=("$2"); shift 2 ;;
+    --id-transform) id_transforms+=("$2"); shift 2 ;;
     --no-rewrite-links) rewrite_links=false; shift ;;
     --keep-theme) keep_theme=true; shift ;;
     --mirror-structure) mirror_structure=true; shift ;;
@@ -291,6 +296,41 @@ if [[ -n "$theme" ]]; then
   fi
 fi
 
+
+# Extract headings from HTML and apply ID transforms
+extract_headings() {
+  local html="$1"
+  shift
+  
+  python3 - "$html" "$@" <<'PYEOF'
+import sys, json, re, subprocess
+html = sys.argv[1]
+transforms = sys.argv[2:]
+
+headings = []
+for match in re.finditer(r'<h([1-6])(?:\s+id="([^"]*)")?[^>]*>([^<]+)</h\1>', html):
+    level = match.group(1)
+    heading_id = match.group(2) or ""
+    title = match.group(3)
+    
+    # Apply transforms to the ID
+    transformed_id = heading_id
+    for t in transforms:
+        if t == "lowercase":
+            transformed_id = transformed_id.lower()
+        elif t == "kebab":
+            transformed_id = transformed_id.replace("_", "-").replace(" ", "-")
+        elif t == "snake":
+            transformed_id = transformed_id.replace("-", "_").replace(" ", "_")
+        elif t.startswith("s"):
+            result = subprocess.run(["sed", t], input=transformed_id, text=True, capture_output=True)
+            transformed_id = result.stdout.strip()
+    
+    headings.append({"title": title, "id": transformed_id})
+
+print(json.dumps(headings))
+PYEOF
+}
 
 # Build nav JSON tree (used by the nav theme)
 # Produces a nested structure mirroring the output directory layout.
@@ -410,6 +450,31 @@ if $rewrite_links; then
   body=$(echo "$body" | sed -E 's/(href="[^"]*\.)md(["#])/\1html\2/g')
 fi
 
+# Extract headings and apply ID transforms
+headings_json="[]"
+if [[ ${#id_transforms[@]} -gt 0 ]]; then
+  headings_json=$(extract_headings "$body" "${id_transforms[@]}")
+  # Apply ID transforms to the body HTML
+  for t in "${id_transforms[@]}"; do
+    case "$t" in
+      lowercase)
+        body=$(echo "$body" | perl -pe 's/(<h[1-6] id=")([^"]*)(")/my ($pre, $id, $post) = ($1, $2, $3); $id = lc($id); "$pre$id$post"/ge')
+        ;;
+      kebab)
+        body=$(echo "$body" | perl -pe 's/(<h[1-6] id=")([^"]*)(")/my ($pre, $id, $post) = ($1, $2, $3); $id =~ s\/[_ ]\/-\/g; "$pre$id$post"/ge')
+        ;;
+      snake)
+        body=$(echo "$body" | perl -pe 's/(<h[1-6] id=")([^"]*)(")/my ($pre, $id, $post) = ($1, $2, $3); $id =~ s\/[- ]\/_\/g; "$pre$id$post"/ge')
+        ;;
+      s*)
+        body=$(SED_EXPR="$t" perl -pe 's/(<h[1-6] id=")([^"]*)(")/my ($pre, $id, $post) = ($1, $2, $3); chomp($id = qx{echo "$id" | sed $ENV{SED_EXPR}}); "$pre$id$post"/ge' <<< "$body")
+        ;;
+    esac
+  done
+else
+  headings_json=$(extract_headings "$body")
+fi
+
 # Check if we need an output folder (only when no -o dir/ was given)
 use_folder=false
 if [[ -z "$output_dir" && -z "$output" ]]; then
@@ -491,7 +556,7 @@ if [[ -n "$tree_json" ]]; then
   else
     cur_path="/$(basename "${input%.md}.html")"
   fi
-  muck_script="<script>const muck = { tree: $tree_json, current: \"$cur_path\" };</script>"
+  muck_script="<script>const muck = { tree: $tree_json, current: \"$cur_path\", headings: $headings_json };</script>"
 fi
 
 cat > "$out_file" <<EOF

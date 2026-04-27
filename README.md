@@ -188,11 +188,12 @@ Every conversion injects a `const muck` at the top of `<body>`:
 ```js
 const muck = {
   tree: [ /* nested file tree */ ],
-  current: "/path/to/current.html"
+  current: "/path/to/current.html",
+  headings: [ /* array of {title, id} */ ]
 };
 ```
 
-`tree` is a nested array of converted files. Each node is a file (`{ label, path }`) or directory (`{ label, children }`). `current` is the root-relative path of the current page. The `nav-*` themes use this to render the sidebar.
+`tree` is a nested array of converted files. Each node is a file (`{ label, path }`) or directory (`{ label, children }`). `current` is the root-relative path of the current page. `headings` is an ordered array of all headings in the current page, each with `title` and `id` properties. The `nav-*` themes use `tree` and `current` to render the sidebar.
 
 ```bash
 muck -i notes.md --no-muck-script  # suppress injection
@@ -209,6 +210,19 @@ muck -i "My Notes.md" --filename-transform lowercase --filename-transform kebab
 
 muck -i Draft_Report.md --filename-transform 's/Draft_//'
 # -> Report.html
+```
+
+### ID transforms
+
+```bash
+muck -i notes.md --id-transform lowercase
+# Heading IDs like "Hello-World" become "hello-world"
+
+muck -i notes.md --id-transform snake
+# Heading IDs like "hello-world" become "hello_world"
+
+muck -i notes.md --id-transform 's/-/_/g'
+# Custom sed expression
 ```
 
 ### Live preview
@@ -244,6 +258,7 @@ Editing any file triggers a rebuild and live-reload. New `.md` files are picked 
 | `--theme NAME` | | Apply a theme defined in config |
 | `--no-theme` | | Suppress config default theme for this run |
 | `--filename-transform T` | | Transform output filename (repeatable). Presets: `lowercase`, `kebab`, `snake` |
+| `--id-transform T` | | Transform heading IDs (repeatable). Presets: `lowercase`, `kebab`, `snake` |
 | `--no-rewrite-links` | | Don't rewrite `.md` links to `.html` |
 | `--keep-theme` | | Keep config theme when `-s`/`--style-link` is also used |
 | `--mirror-structure` | | Preserve input directory structure in output (default: on) |
