@@ -31,15 +31,20 @@ cd ~/projects/muck
 ./install.sh
 ```
 
-Installs to `~/.local/bin/` and creates `~/.muck/` with stylesheets, scripts, and a default config.
+Installs to `~/.local/bin/` and creates `~/.muck/` with built-in themes and a default config.
 
 ```
 ~/.local/bin/muck
 ~/.local/bin/muck-serve
 ~/.muck/
-  config          ← default config (--theme dynamic)
-  styles/         ← CSS assets
-  scripts/        ← JS assets
+  config              ← default config (--theme dynamic)
+  themes/
+    light/            ← style.css
+    dark/             ← style.css
+    dynamic/          ← style.css
+    nav-light/        ← style.css, script.js
+    nav-dark/         ← style.css, script.js
+    nav-dynamic/      ← style.css, script.js
 ```
 
 ### Install options
@@ -112,7 +117,7 @@ muck -i notes.md -o report.pdf --pdf-engine weasyprint --page-size A4 --margin 2
 
 ### Themes
 
-Themes are defined in your config file. The default install creates `~/.muck/config` with these themes ready to use:
+The default install creates six themes in `~/.muck/themes/`, ready to use:
 
 | Theme | Description |
 |-------|-------------|
@@ -122,12 +127,27 @@ Themes are defined in your config file. The default install creates `~/.muck/con
 | `nav-light` | Light mode with sidebar navigation |
 | `nav-dark` | Dark mode with sidebar navigation |
 | `nav-dynamic` | Auto light/dark with sidebar navigation |
-| `none` | No styles |
 
 ```bash
 muck -i notes.md --theme dynamic
 muck -i notes.md --theme dark
 muck -i notes.md --no-theme   # suppress config default for this run
+```
+
+Any folder in `~/.muck/themes/` is automatically a valid theme — no config entry needed. A theme folder can contain a `style.css`, a `script.js`, or both:
+
+```
+~/.muck/themes/
+  my-theme/
+    style.css
+    script.js   ← optional
+```
+
+You can also define themes explicitly in the config `[themes]` section (see [Config file](#config-file)). If a theme name exists as both a folder and a `[themes]` entry, the folder assets load first and the config assets are appended after. This lets you extend a folder-based theme with extra styles or scripts:
+
+```
+[themes]
+my-theme  ./overrides.css script-link:./extra.js
 ```
 
 The `nav-*` themes add a sidebar showing the full file tree with the current page highlighted. They work best with `--mirror-structure`:
@@ -226,7 +246,8 @@ Editing any file triggers a rebuild and live-reload. New `.md` files are picked 
 | `--filename-transform T` | | Transform output filename (repeatable). Presets: `lowercase`, `kebab`, `snake` |
 | `--no-rewrite-links` | | Don't rewrite `.md` links to `.html` |
 | `--keep-theme` | | Keep config theme when `-s`/`--style-link` is also used |
-| `--mirror-structure` | | Preserve input directory structure in output |
+| `--mirror-structure` | | Preserve input directory structure in output (default: on) |
+| `--no-mirror-structure` | | Flatten all outputs into the output directory |
 | `--no-muck-script` | | Don't inject the `muck` script |
 | `--help` | `-h` | Show help |
 | `--version` | | Show version |
@@ -238,7 +259,8 @@ Editing any file triggers a rebuild and live-reload. New `.md` files are picked 
 | `--input FILE\|DIR` | `-i` | Input Markdown file or directory (required, repeatable) |
 | `--port PORT` | `-p` | HTTP server port (default: `8080`) |
 | `--open` | | Open preview in default browser |
-| `--mirror-structure` | | Preserve input directory structure in output |
+| `--mirror-structure` | | Preserve input directory structure in output (default: on) |
+| `--no-mirror-structure` | | Flatten all outputs into the output directory |
 | `--` | | Pass remaining arguments to muck |
 | `--help` | `-h` | Show help |
 | `--version` | | Show version |
@@ -261,13 +283,20 @@ Options are listed one per line. CLI args always override config values.
 
 ### Themes
 
-Define themes in a `[themes]` section. Each line is a name followed by space-separated assets. Unprefixed paths/URLs are stylesheets; `script:` inlines JS; `script-link:` links JS:
+Any folder in `~/.muck/themes/` is automatically a valid theme — no config entry needed. You can also define themes explicitly in a `[themes]` section. Each line is a name followed by space-separated assets. Unprefixed paths/URLs are stylesheets; `script:` inlines JS; `script-link:` links JS:
 
 ```
 [themes]
 dracula  https://cdn.example.com/dracula.css
 fancy    ./style.css ./extra.css script:./toggle.js
 none
+```
+
+If a theme name exists as both a folder and a `[themes]` entry, the folder assets load first and the config assets are appended after. This lets you extend a folder-based theme with extra styles or scripts:
+
+```
+[themes]
+my-theme  ./overrides.css script-link:./extra.js
 ```
 
 Theme assets are applied first; `-s`/`--style-link`/`--script`/`--script-link` layer on top.

@@ -38,32 +38,30 @@ if [[ -d "$MUCK_HOME" ]] && ! $reset_config; then
   exit 0
 fi
 
-mkdir -p "$MUCK_HOME/styles" "$MUCK_HOME/scripts"
+mkdir -p "$MUCK_HOME/themes"
 
-# Copy CSS assets
-cp "$SCRIPT_DIR/muck-colors.css"  "$MUCK_HOME/styles/"
-cp "$SCRIPT_DIR/muck-light.css"   "$MUCK_HOME/styles/"
-cp "$SCRIPT_DIR/muck-dark.css"    "$MUCK_HOME/styles/"
-cp "$SCRIPT_DIR/muck-dynamic.css" "$MUCK_HOME/styles/"
-cp "$SCRIPT_DIR/muck-nav.css"     "$MUCK_HOME/styles/"
+# Build theme folders by concatenating CSS sources
+make_theme() {
+  local name="$1"; shift
+  mkdir -p "$MUCK_HOME/themes/$name"
+  cat "$@" > "$MUCK_HOME/themes/$name/style.css"
+}
 
-# Copy JS assets
-cp "$SCRIPT_DIR/muck-nav.js" "$MUCK_HOME/scripts/"
+make_theme light       "$SCRIPT_DIR/muck-colors.css" "$SCRIPT_DIR/muck-light.css"   "$SCRIPT_DIR/muck-base.css"
+make_theme dark        "$SCRIPT_DIR/muck-colors.css" "$SCRIPT_DIR/muck-dark.css"    "$SCRIPT_DIR/muck-base.css"
+make_theme dynamic     "$SCRIPT_DIR/muck-colors.css" "$SCRIPT_DIR/muck-dynamic.css" "$SCRIPT_DIR/muck-base.css"
+make_theme nav-light   "$SCRIPT_DIR/muck-colors.css" "$SCRIPT_DIR/muck-light.css"   "$SCRIPT_DIR/muck-base.css" "$SCRIPT_DIR/muck-nav.css"
+make_theme nav-dark    "$SCRIPT_DIR/muck-colors.css" "$SCRIPT_DIR/muck-dark.css"    "$SCRIPT_DIR/muck-base.css" "$SCRIPT_DIR/muck-nav.css"
+make_theme nav-dynamic "$SCRIPT_DIR/muck-colors.css" "$SCRIPT_DIR/muck-dynamic.css" "$SCRIPT_DIR/muck-base.css" "$SCRIPT_DIR/muck-nav.css"
 
-# Generate config
-S="$MUCK_HOME/styles"
-J="$MUCK_HOME/scripts"
+# nav themes also need the JS
+cp "$SCRIPT_DIR/muck-nav.js" "$MUCK_HOME/themes/nav-light/script.js"
+cp "$SCRIPT_DIR/muck-nav.js" "$MUCK_HOME/themes/nav-dark/script.js"
+cp "$SCRIPT_DIR/muck-nav.js" "$MUCK_HOME/themes/nav-dynamic/script.js"
+
+# Generate config (no [themes] section needed — themes/ dir is auto-discovered)
 cat > "$MUCK_HOME/config" <<EOF
 --theme dynamic
-
-[themes]
-light       $S/muck-colors.css $S/muck-light.css
-dark        $S/muck-colors.css $S/muck-dark.css
-dynamic     $S/muck-colors.css $S/muck-dynamic.css
-nav-light   $S/muck-colors.css $S/muck-light.css $S/muck-nav.css script-link:$J/muck-nav.js
-nav-dark    $S/muck-colors.css $S/muck-dark.css $S/muck-nav.css script-link:$J/muck-nav.js
-nav-dynamic $S/muck-colors.css $S/muck-dynamic.css $S/muck-nav.css script-link:$J/muck-nav.js
-none
 EOF
 
 echo "muck installed to ~/.local/bin"

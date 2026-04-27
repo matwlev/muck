@@ -36,16 +36,21 @@ Options:
                              expression or a name from config [filename-transforms]
   --no-rewrite-links         Don't rewrite .md links to .html in output
   --keep-theme               Keep config theme when -s/--style-link is also used
-  --mirror-structure         Preserve input directory structure in output
+  --mirror-structure         Preserve input directory structure in output (default: on)
+  --no-mirror-structure      Flatten all outputs into the output directory
   --no-muck-script           Don't inject the muck script into the output
   -h, --help                 Show this help message
   --version                  Show version
 
 Themes:
-  Themes are defined in your config file. install.sh creates ~/.muck/config
-  with light, dark, dynamic, nav-light, nav-dark, nav-dynamic, and none.
-  Set a default with --theme in your config. Override per-run with --theme
-  or suppress with --no-theme.
+  Any folder in ~/.muck/themes/ is automatically a valid theme. A theme folder
+  can contain a style.css, a script.js, or both. If a theme also has a [themes]
+  entry in the config, the folder assets load first and the config assets are
+  appended after.
+
+  The default install creates: light, dark, dynamic, nav-light, nav-dark,
+  nav-dynamic. Set a default with --theme in your config. Override per-run
+  with --theme or suppress with --no-theme.
 
 Config file (~/.muck/config or ./muck.config):
   Options are listed one per line. CLI args always override config values.
@@ -186,7 +191,7 @@ no_theme=false
 output=""
 rewrite_links=true
 keep_theme=false
-mirror_structure=false
+mirror_structure=true
 no_muck_script=false
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -212,6 +217,7 @@ while [[ $# -gt 0 ]]; do
     --no-rewrite-links) rewrite_links=false; shift ;;
     --keep-theme) keep_theme=true; shift ;;
     --mirror-structure) mirror_structure=true; shift ;;
+    --no-mirror-structure) mirror_structure=false; shift ;;
     --no-muck-script) no_muck_script=true; shift ;;
     *) echo "Unknown option: $1" >&2; echo "Run 'muck --help' for usage." >&2; exit 1 ;;
   esac
@@ -254,15 +260,23 @@ if [[ -n "$theme" ]]; then
   theme_style=""
   theme_script=""
   theme_found=false
+  # Load folder-based theme first (if it exists)
+  theme_dir="$HOME/.muck/themes/$theme"
+  if [[ -d "$theme_dir" ]]; then
+    [[ -f "$theme_dir/style.css" ]] && theme_style="inline:$theme_dir/style.css"
+    [[ -f "$theme_dir/script.js" ]] && theme_script="inline:$theme_dir/script.js"
+    theme_found=true
+  fi
+  # Append config [themes] assets on top (or use exclusively if no folder)
   for ((i=0; i<${#theme_names[@]}; i++)); do
     if [[ "${theme_names[$i]}" == "$theme" ]]; then
-      theme_style="${theme_styles[$i]}"
-      theme_script="${theme_scripts[$i]}"
+      [[ -n "${theme_styles[$i]}" ]] && theme_style+="${theme_style:+ }${theme_styles[$i]}"
+      [[ -n "${theme_scripts[$i]}" ]] && theme_script+="${theme_script:+ }${theme_scripts[$i]}"
       theme_found=true
       break
     fi
   done
-  $theme_found || { echo "Error: unknown theme '$theme'. Available: ${theme_names[*]}" >&2; exit 1; }
+  $theme_found || { echo "Error: unknown theme '$theme'. Available: ${theme_names[*]+"${theme_names[*]}"}" >&2; exit 1; }
   theme_style_arr=()
   [[ -n "$theme_style" ]] && read -ra theme_style_arr <<< "$theme_style"
   theme_script_arr=()
@@ -396,16 +410,18 @@ if $rewrite_links; then
   body=$(echo "$body" | sed -E 's/(href="[^"]*\.)md(["#])/\1html\2/g')
 fi
 
-# Check if we need an output folder
+# Check if we need an output folder (only when no -o dir/ was given)
 use_folder=false
-for s in ${styles[@]+"${styles[@]}"}; do
-  val="${s#*:}"
-  [[ "$s" == link:* && -f "$val" ]] && use_folder=true
-done
-for s in ${scripts[@]+"${scripts[@]}"}; do
-  val="${s#*:}"
-  [[ "$s" == link:* && -f "$val" ]] && use_folder=true
-done
+if [[ -z "$output_dir" && -z "$output" ]]; then
+  for s in ${styles[@]+"${styles[@]}"}; do
+    val="${s#*:}"
+    [[ "$s" == link:* && -f "$val" ]] && use_folder=true
+  done
+  for s in ${scripts[@]+"${scripts[@]}"}; do
+    val="${s#*:}"
+    [[ "$s" == link:* && -f "$val" ]] && use_folder=true
+  done
+fi
 
 if $use_folder; then
   out_dir="${cur_output%.html}"
@@ -415,6 +431,9 @@ else
   mkdir -p "$(dirname "$cur_output")"
   out_file="$cur_output"
 fi
+
+# Directory to copy linked assets into
+asset_dir="$( $use_folder && echo "$out_dir" || echo "$(dirname "$out_file")" )"
 
 # Build style tags in order
 style_html=""
@@ -427,7 +446,7 @@ for s in ${styles[@]+"${styles[@]}"}; do
   else
     if [[ -f "$val" ]]; then
       css_name="$(basename "$val")"
-      cp "$val" "$out_dir/$css_name"
+      cp "$val" "$asset_dir/$css_name"
       style_html+="<link rel=\"stylesheet\" href=\"$css_name\">"
     else
       style_html+="<link rel=\"stylesheet\" href=\"$val\">"
@@ -446,7 +465,7 @@ for s in ${scripts[@]+"${scripts[@]}"}; do
   else
     if [[ -f "$val" ]]; then
       js_name="$(basename "$val")"
-      cp "$val" "$out_dir/$js_name"
+      cp "$val" "$asset_dir/$js_name"
       script_tags+="<script src=\"$js_name\"></script>"
     else
       script_tags+="<script src=\"$val\"></script>"
@@ -457,11 +476,10 @@ done
 # PDF-specific styles
 if [[ "$cur_output" == *.pdf ]] || [[ -n "$pdf_engine" ]]; then
   pdf_style="<style>@page{size:$page_size;margin:$page_margin;}body{max-width:none;margin:0;padding:0;}</style>"
-  body_style=""
 else
   pdf_style=""
-  body_style=" style=\"max-width:800px;margin:auto;padding:2em;\""
 fi
+body_style=""
 
 muck_script=""
 if [[ -n "$tree_json" ]]; then
