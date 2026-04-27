@@ -93,6 +93,14 @@ muck -i ~/Documents/markdown/ -o ./output/ --mirror-structure
 
 When converting multiple files, each gets its own output file. Use `-o dir/` to collect all outputs in one place. When `-i` is a directory, all `.md` files inside are converted.
 
+### Concatenating files
+
+```bash
+muck -i ch1.md -i ch2.md -i ch3.md --concat-files -o book.html
+```
+
+The `--concat-files` flag concatenates all input files into a single HTML output. Each file's content is wrapped in a `<div>` with an `id` attribute based on the filename (e.g., `<div id="ch1">...</div>`).
+
 ### Linked stylesheets
 
 ```bash
@@ -189,11 +197,12 @@ Every conversion injects a `const muck` at the top of `<body>`:
 const muck = {
   tree: [ /* nested file tree */ ],
   current: "/path/to/current.html",
-  headings: [ /* array of {title, id} */ ]
+  headings: [ /* array of {title, id} */ ],
+  sections: [ /* array of section ids (concat mode only) */ ]
 };
 ```
 
-`tree` is a nested array of converted files. Each node is a file (`{ label, path }`) or directory (`{ label, children }`). `current` is the root-relative path of the current page. `headings` is an ordered array of all headings in the current page, each with `title` and `id` properties. The `nav-*` themes use `tree` and `current` to render the sidebar.
+`tree` is a nested array of converted files. Each node is a file (`{ label, path }`) or directory (`{ label, children }`). `current` is the root-relative path of the current page. `headings` is an ordered array of all headings in the current page, each with `title` and `id` properties. `sections` is an array of section div IDs when using `--concat-files` (e.g., `["ch1", "ch2", "ch3"]`). The `nav-*` themes use `tree` and `current` to render the sidebar.
 
 ```bash
 muck -i notes.md --no-muck-script  # suppress injection
@@ -264,6 +273,7 @@ Editing any file triggers a rebuild and live-reload. New `.md` files are picked 
 | `--mirror-structure` | | Preserve input directory structure in output (default: on) |
 | `--no-mirror-structure` | | Flatten all outputs into the output directory |
 | `--no-muck-script` | | Don't inject the `muck` script |
+| `--concat-files` | | Concatenate all input files into a single HTML output |
 | `--help` | `-h` | Show help |
 | `--version` | | Show version |
 

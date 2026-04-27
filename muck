@@ -42,6 +42,9 @@ Options:
   --mirror-structure         Preserve input directory structure in output (default: on)
   --no-mirror-structure      Flatten all outputs into the output directory
   --no-muck-script           Don't inject the muck script into the output
+  --concat-files             Concatenate all input files into a single HTML output.
+                             Each file's content is wrapped in a div with an id
+                             based on the filename.
   -h, --help                 Show this help message
   --version                  Show version
 
@@ -197,6 +200,7 @@ rewrite_links=true
 keep_theme=false
 mirror_structure=true
 no_muck_script=false
+concat_files=false
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h|--help) help ;;
@@ -224,6 +228,7 @@ while [[ $# -gt 0 ]]; do
     --mirror-structure) mirror_structure=true; shift ;;
     --no-mirror-structure) mirror_structure=false; shift ;;
     --no-muck-script) no_muck_script=true; shift ;;
+    --concat-files) concat_files=true; shift ;;
     *) echo "Unknown option: $1" >&2; echo "Run 'muck --help' for usage." >&2; exit 1 ;;
   esac
 done
@@ -254,7 +259,7 @@ if [[ -n "$output" ]]; then
     output_dir="${output%/}"
     mkdir -p "$output_dir"
     output=""
-  elif [[ ${#inputs[@]} -gt 1 ]]; then
+  elif [[ ${#inputs[@]} -gt 1 && ! $concat_files ]]; then
     echo "Error: -o must be a directory (with trailing /) when used with multiple input files." >&2; exit 1
   fi
 fi
@@ -381,6 +386,154 @@ if ! $no_muck_script; then
     tree_args+=("${inputs[$i]}" "${input_roots[$i]:-}")
   done
   tree_json="$(build_nav_json "${output_dir:-}" "$mirror_structure" "${tree_args[@]}")"
+fi
+
+# Handle concatenation mode
+if $concat_files; then
+  [[ ${#inputs[@]} -eq 0 ]] && { echo "Error: no input files for concatenation" >&2; exit 1; }
+  
+  # Determine output file
+  if [[ -n "$output" ]]; then
+    concat_output="$output"
+  elif [[ -n "$output_dir" ]]; then
+    concat_output="$output_dir/combined.html"
+  else
+    concat_output="combined.html"
+  fi
+  
+  # Concatenate all file bodies
+  combined_body=""
+  section_ids=()
+  for input in "${inputs[@]}"; do
+    case "${input##*.}" in
+      md|markdown|mdown|mkd) ;;
+      *) echo "⚠️  Skipping $(basename "$input") (not a Markdown file)" >&2; continue ;;
+    esac
+    [[ -f "$input" ]] || { echo "Error: $input not found" >&2; exit 1; }
+    
+    # Generate ID from filename
+    file_id="$(basename "${input%.*}" | tr '[:upper:]' '[:lower:]' | tr ' ' '-')"
+    section_ids+=("$file_id")
+    
+    # Convert to HTML
+    file_body=$(pandoc -f gfm -t html "$input")
+    
+    # Rewrite .md links to .html
+    if $rewrite_links; then
+      file_body=$(echo "$file_body" | sed -E 's/(href="[^"]*\.)md(["#])/\1html\2/g')
+    fi
+    
+    # Wrap in div with id
+    combined_body+="<div id=\"$file_id\">$file_body</div>"
+  done
+  
+  # Extract headings from combined body
+  headings_json="[]"
+  if [[ ${#id_transforms[@]} -gt 0 ]]; then
+    headings_json=$(extract_headings "$combined_body" "${id_transforms[@]}")
+    # Apply ID transforms to the combined body
+    for t in "${id_transforms[@]}"; do
+      case "$t" in
+        lowercase)
+          combined_body=$(echo "$combined_body" | perl -pe 's/(<h[1-6] id=")([^"]*)(")/my ($pre, $id, $post) = ($1, $2, $3); $id = lc($id); "$pre$id$post"/ge')
+          ;;
+        kebab)
+          combined_body=$(echo "$combined_body" | perl -pe 's/(<h[1-6] id=")([^"]*)(")/my ($pre, $id, $post) = ($1, $2, $3); $id =~ s\/[_ ]\/-\/g; "$pre$id$post"/ge')
+          ;;
+        snake)
+          combined_body=$(echo "$combined_body" | perl -pe 's/(<h[1-6] id=")([^"]*)(")/my ($pre, $id, $post) = ($1, $2, $3); $id =~ s\/[- ]\/_\/g; "$pre$id$post"/ge')
+          ;;
+        s*)
+          combined_body=$(SED_EXPR="$t" perl -pe 's/(<h[1-6] id=")([^"]*)(")/my ($pre, $id, $post) = ($1, $2, $3); chomp($id = qx{echo "$id" | sed $ENV{SED_EXPR}}); "$pre$id$post"/ge' <<< "$combined_body")
+          ;;
+      esac
+    done
+  else
+    headings_json=$(extract_headings "$combined_body")
+  fi
+  
+  # Check if we need an output folder
+  use_folder=false
+  for s in ${styles[@]+"${styles[@]}"}; do
+    val="${s#*:}"
+    [[ "$s" == link:* && -f "$val" ]] && use_folder=true
+  done
+  for s in ${scripts[@]+"${scripts[@]}"}; do
+    val="${s#*:}"
+    [[ "$s" == link:* && -f "$val" ]] && use_folder=true
+  done
+  
+  if $use_folder; then
+    out_dir="${concat_output%.html}"
+    mkdir -p "$out_dir"
+    out_file="$out_dir/$(basename "$concat_output")"
+  else
+    mkdir -p "$(dirname "$concat_output")"
+    out_file="$concat_output"
+  fi
+  
+  asset_dir="$( $use_folder && echo "$out_dir" || echo "$(dirname "$out_file")" )"
+  
+  # Build style tags
+  style_html=""
+  for s in ${styles[@]+"${styles[@]}"}; do
+    type="${s%%:*}"
+    val="${s#*:}"
+    if [[ "$type" == "inline" ]]; then
+      [[ -f "$val" ]] || { echo "Error: stylesheet $val not found" >&2; exit 1; }
+      style_html+="<style>$(cat "$val")</style>"
+    else
+      if [[ -f "$val" ]]; then
+        css_name="$(basename "$val")"
+        cp "$val" "$asset_dir/$css_name"
+        style_html+="<link rel=\"stylesheet\" href=\"$css_name\">"
+      else
+        style_html+="<link rel=\"stylesheet\" href=\"$val\">"
+      fi
+    fi
+  done
+  
+  # Build script tags
+  script_tags=""
+  for s in ${scripts[@]+"${scripts[@]}"}; do
+    type="${s%%:*}"
+    val="${s#*:}"
+    if [[ "$type" == "inline" ]]; then
+      [[ -f "$val" ]] || { echo "Error: script $val not found" >&2; exit 1; }
+      script_tags+="<script>$(cat "$val")</script>"
+    else
+      if [[ -f "$val" ]]; then
+        js_name="$(basename "$val")"
+        cp "$val" "$asset_dir/$js_name"
+        script_tags+="<script src=\"$js_name\"></script>"
+      else
+        script_tags+="<script src=\"$val\"></script>"
+      fi
+    fi
+  done
+  
+  # Muck script
+  muck_script=""
+  if [[ -n "$tree_json" ]]; then
+    sections_json=$(printf '%s\n' "${section_ids[@]}" | python3 -c 'import sys, json; print(json.dumps([line.strip() for line in sys.stdin]))')
+    muck_script="<script>const muck = { tree: $tree_json, current: \"/combined.html\", headings: $headings_json, sections: $sections_json };</script>"
+  fi
+  
+  # Write output
+  cat > "$out_file" <<EOF
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+$style_html</head>
+<body>
+$muck_script$combined_body
+$script_tags</body>
+</html>
+EOF
+  
+  echo "Concatenated ${#inputs[@]} files -> $out_file"
+  exit 0
 fi
 
 for ((input_idx=0; input_idx<${#inputs[@]}; input_idx++)); do
