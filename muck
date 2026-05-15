@@ -45,6 +45,11 @@ Options:
   --concat-files             Concatenate all input files into a single HTML output.
                              Each file's content is wrapped in a div with an id
                              based on the filename.
+  --assets <dir>             Copy an assets directory into the output alongside
+                             the HTML. Links to files in this dir will work as-is.
+  --new-tab [exts]           Add target=_blank to links matching the given
+                             comma-separated extensions (e.g. pdf,png,jpg).
+                             Defaults to: pdf,png,jpg,jpeg,gif,svg,webp
   -h, --help                 Show this help message
   --version                  Show version
 
@@ -201,6 +206,9 @@ keep_theme=false
 mirror_structure=true
 no_muck_script=false
 concat_files=false
+assets_dir=""
+new_tab_exts=""
+NEW_TAB_DEFAULT="pdf,png,jpg,jpeg,gif,svg,webp"
 while [[ $# -gt 0 ]]; do
   case $1 in
     -h|--help) help ;;
@@ -229,6 +237,13 @@ while [[ $# -gt 0 ]]; do
     --no-mirror-structure) mirror_structure=false; shift ;;
     --no-muck-script) no_muck_script=true; shift ;;
     --concat-files) concat_files=true; shift ;;
+    --assets) assets_dir="$2"; shift 2 ;;
+    --new-tab)
+      if [[ -n "${2:-}" && "$2" != -* ]]; then
+        new_tab_exts="$2"; shift 2
+      else
+        new_tab_exts="$NEW_TAB_DEFAULT"; shift
+      fi ;;
     *) echo "Unknown option: $1" >&2; echo "Run 'muck --help' for usage." >&2; exit 1 ;;
   esac
 done
@@ -337,6 +352,26 @@ print(json.dumps(headings))
 PYEOF
 }
 
+# Add target=_blank to links whose href ends in one of the given extensions
+apply_new_tab() {
+  local html="$1" exts="$2"
+  # Build alternation pattern from comma-separated extensions
+  local pat
+  pat="$(echo "$exts" | tr ',' '|')"
+  echo "$html" | perl -pe "s{(<a\s[^>]*href=\"[^\"]+\.(?:${pat})\"[^>]*)>}{\$1 target=\"_blank\">}gi"
+}
+
+# Copy assets directory into a destination, preserving structure
+copy_assets() {
+  local src="$1" dest="$2"
+  [[ -d "$src" ]] || { echo "Error: --assets directory '$src' not found" >&2; exit 1; }
+  local abs_src
+  abs_src="$(cd "$src" && pwd)"
+  local dest_name
+  dest_name="$(basename "$abs_src")"
+  cp -r "$abs_src" "$dest/$dest_name"
+}
+
 # Build nav JSON tree (used by the nav theme)
 # Produces a nested structure mirroring the output directory layout.
 build_nav_json() {
@@ -422,6 +457,9 @@ if $concat_files; then
     if $rewrite_links; then
       file_body=$(echo "$file_body" | sed -E 's/(href="[^"]*\.)md(["#])/\1html\2/g')
     fi
+    
+    # Add target=_blank to asset links
+    [[ -n "$new_tab_exts" ]] && file_body=$(apply_new_tab "$file_body" "$new_tab_exts")
     
     # Wrap in div with id
     combined_body+="<div id=\"$file_id\">$file_body</div>"
@@ -533,6 +571,7 @@ $script_tags</body>
 EOF
   
   echo "Concatenated ${#inputs[@]} files -> $out_file"
+  [[ -n "$assets_dir" ]] && copy_assets "$assets_dir" "$asset_dir"
   exit 0
 fi
 
@@ -602,6 +641,9 @@ body=$(pandoc -f gfm -t html "$input")
 if $rewrite_links; then
   body=$(echo "$body" | sed -E 's/(href="[^"]*\.)md(["#])/\1html\2/g')
 fi
+
+# Add target=_blank to asset links
+[[ -n "$new_tab_exts" ]] && body=$(apply_new_tab "$body" "$new_tab_exts")
 
 # Extract headings and apply ID transforms
 headings_json="[]"
@@ -740,6 +782,7 @@ if [[ "$cur_output" == *.pdf ]] || [[ -n "$pdf_engine" ]]; then
   rm -f "$tmp_html"
   echo "Converted $input -> $pdf_out"
 else
+  [[ -n "$assets_dir" ]] && copy_assets "$assets_dir" "$asset_dir"
   echo "Converted $input -> $out_file"
 fi
 

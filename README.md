@@ -274,6 +274,8 @@ Editing any file triggers a rebuild and live-reload. New `.md` files are picked 
 | `--no-mirror-structure` | | Flatten all outputs into the output directory |
 | `--no-muck-script` | | Don't inject the `muck` script |
 | `--concat-files` | | Concatenate all input files into a single HTML output |
+| `--assets DIR` | | Copy an assets directory into the output alongside the HTML |
+| `--new-tab [EXTS]` | | Add `target=_blank` to links matching comma-separated extensions. Defaults to `pdf,png,jpg,jpeg,gif,svg,webp` |
 | `--help` | `-h` | Show help |
 | `--version` | | Show version |
 
@@ -286,6 +288,7 @@ Editing any file triggers a rebuild and live-reload. New `.md` files are picked 
 | `--open` | | Open preview in default browser |
 | `--mirror-structure` | | Preserve input directory structure in output (default: on) |
 | `--no-mirror-structure` | | Flatten all outputs into the output directory |
+| `--assets DIR` | | Copy an assets directory into the serve output and watch for changes |
 | `--` | | Pass remaining arguments to muck |
 | `--help` | `-h` | Show help |
 | `--version` | | Show version |

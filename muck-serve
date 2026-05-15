@@ -8,6 +8,7 @@ OPEN=false
 MIRROR_STRUCTURE=false
 OUTPUT_DIR=""
 MUCK_ARGS=()
+ASSETS_DIR=""
 
 help() {
   cat <<'EOF'
@@ -26,6 +27,8 @@ Options:
   -p, --port <port>       HTTP server port (default: 8080)
   --open                  Open the preview in your default browser
   --mirror-structure      Preserve input directory structure in the output
+  --assets <dir>          Copy an assets directory into the serve output and
+                           watch it for changes
   -h, --help              Show this help message
   --version               Show version
   --                      Pass remaining arguments to muck (e.g. stylesheets)
@@ -55,6 +58,7 @@ while [[ $# -gt 0 ]]; do
     -p|--port)          PORT="$2"; shift 2 ;;
     --open)             OPEN=true; shift ;;
     --mirror-structure) MIRROR_STRUCTURE=true; shift ;;
+    --assets)           ASSETS_DIR="$2"; shift 2 ;;
     --)                 shift; MUCK_ARGS=("$@"); break ;;
     *)                  MUCK_ARGS+=("$1"); shift ;;
   esac
@@ -100,6 +104,17 @@ inject_reload() {
   rm -f "$1.bak"
 }
 
+copy_assets_to_serve() {
+  [[ -z "$ASSETS_DIR" ]] && return
+  [[ -d "$ASSETS_DIR" ]] || { echo "[muck-serve] Warning: --assets directory '$ASSETS_DIR' not found" >&2; return; }
+  local abs_src
+  abs_src="$(cd "$ASSETS_DIR" && pwd)"
+  local dest_name
+  dest_name="$(basename "$abs_src")"
+  rm -rf "${SERVE_DIR:?}/$dest_name"
+  cp -r "$abs_src" "$SERVE_DIR/$dest_name"
+}
+
 # Compute the output HTML path for a given source file and its root
 serve_output_path() {
   local src="$1" root="$2"
@@ -132,7 +147,9 @@ rebuild_all() {
   for inp in "${INPUTS[@]}"; do muck_inputs+=(-i "$inp"); done
   local mirror_flag=()
   $MIRROR_STRUCTURE && mirror_flag=(--mirror-structure)
-  muck "${muck_inputs[@]}" -o "${SERVE_DIR}/" "${mirror_flag[@]+"${mirror_flag[@]}"}" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"
+  local assets_flag=()
+  [[ -n "$ASSETS_DIR" ]] && assets_flag=(--assets "$ASSETS_DIR")
+  muck "${muck_inputs[@]}" -o "${SERVE_DIR}/" "${mirror_flag[@]+"${mirror_flag[@]}"}" "${assets_flag[@]+"${assets_flag[@]}"}" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"
   while IFS= read -r -d '' h; do inject_reload "$h"; done < <(find "$SERVE_DIR" -name '*.html' -print0)
   date +%s > "$TS_FILE"
   echo "[muck-serve] rebuilt ${#MD_FILES[@]} file(s) $(date +%T)"
@@ -186,6 +203,17 @@ for f in "${MD_FILES[@]}"; do
   LAST_MODS+=("$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f")")
 done
 
+# Build initial asset mod-time snapshot
+ASSET_FILES=()
+ASSET_MODS=()
+if [[ -n "$ASSETS_DIR" && -d "$ASSETS_DIR" ]]; then
+  ABS_ASSETS_DIR="$(cd "$ASSETS_DIR" && pwd)"
+  while IFS= read -r -d '' f; do
+    ASSET_FILES+=("$f")
+    ASSET_MODS+=("$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f")")
+  done < <(find "$ABS_ASSETS_DIR" -type f -print0)
+fi
+
 # Watch for changes
 while true; do
   sleep 1
@@ -213,5 +241,25 @@ while true; do
       echo "[muck-serve] rebuilt $(basename "$f") $(date +%T)"
     fi
   done
+  # Watch assets directory for changes
+  if [[ -n "$ASSETS_DIR" && -d "$ASSETS_DIR" ]]; then
+    while IFS= read -r -d '' f; do
+      found=false
+      for existing in "${ASSET_FILES[@]+"${ASSET_FILES[@]}"}"; do [[ "$existing" == "$f" ]] && { found=true; break; }; done
+      $found || { ASSET_FILES+=("$f"); ASSET_MODS+=(0); }
+    done < <(find "$ABS_ASSETS_DIR" -type f -print0)
+    for ((i=0; i<${#ASSET_FILES[@]}; i++)); do
+      f="${ASSET_FILES[$i]}"
+      [[ -f "$f" ]] || continue
+      cur=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f")
+      if [[ "$cur" != "${ASSET_MODS[$i]}" ]]; then
+        ASSET_MODS[$i]="$cur"
+        copy_assets_to_serve
+        changed=true
+        echo "[muck-serve] updated assets $(date +%T)"
+        break
+      fi
+    done
+  fi
   if $changed; then date +%s > "$TS_FILE"; fi
 done
