@@ -5,7 +5,7 @@ VERSION="2.0.0"
 PORT=8080
 INPUTS=()
 OPEN=false
-MIRROR_STRUCTURE=false
+MIRROR_STRUCTURE=true
 OUTPUT_DIR=""
 MUCK_ARGS=()
 ASSETS_DIR=""
@@ -22,11 +22,10 @@ Options:
                            repeatable). Directories are expanded to all
                            .md files within them.
   -o, --output <dir>      Output directory (default: a temp dir). The
-                           directory is created if it does not exist and
-                           --mirror-structure is implied.
+                           directory is created if it does not exist.
   -p, --port <port>       HTTP server port (default: 8080)
   --open                  Open the preview in your default browser
-  --mirror-structure      Preserve input directory structure in the output
+  --no-mirror-structure   Flatten all outputs into the output directory
   --assets <dir>          Copy an assets directory into the serve output and
                            watch it for changes
   -h, --help              Show this help message
@@ -44,7 +43,7 @@ Examples:
   muck-serve -i ch1.md -i ch2.md
   muck-serve -i notes.md --open
   muck-serve -i notes.md -p 3000 -- -s ./my-theme.css
-  muck-serve -i ./docs/ --mirror-structure
+  muck-serve -i ./docs/ --no-mirror-structure
 EOF
   exit 0
 }
@@ -57,7 +56,7 @@ while [[ $# -gt 0 ]]; do
     -o|--output)        OUTPUT_DIR="$2"; shift 2 ;;
     -p|--port)          PORT="$2"; shift 2 ;;
     --open)             OPEN=true; shift ;;
-    --mirror-structure) MIRROR_STRUCTURE=true; shift ;;
+    --no-mirror-structure) MIRROR_STRUCTURE=false; shift ;;
     --assets)           ASSETS_DIR="$2"; shift 2 ;;
     --)                 shift; MUCK_ARGS=("$@"); break ;;
     *)                  MUCK_ARGS+=("$1"); shift ;;
@@ -131,22 +130,21 @@ rebuild_file() {
   local out
   out="$(serve_output_path "$src" "$root")"
   mkdir -p "$(dirname "$out")"
-  local mirror_flag=()
   if $MIRROR_STRUCTURE && [[ -n "$root" ]]; then
-    mirror_flag=(--mirror-structure)
-    muck -i "$root" -o "${SERVE_DIR}/" "${mirror_flag[@]}" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"
+    muck -i "$root" -o "${SERVE_DIR}/" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"
     while IFS= read -r -d '' h; do inject_reload "$h"; done < <(find "$SERVE_DIR" -name '*.html' -print0)
   else
     muck -i "$src" -o "$(dirname "$out")/" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"
     inject_reload "$out"
   fi
+  date +%s > "$TS_FILE"
 }
 
 rebuild_all() {
   local muck_inputs=()
   for inp in "${INPUTS[@]}"; do muck_inputs+=(-i "$inp"); done
   local mirror_flag=()
-  $MIRROR_STRUCTURE && mirror_flag=(--mirror-structure)
+  $MIRROR_STRUCTURE || mirror_flag=(--no-mirror-structure)
   local assets_flag=()
   [[ -n "$ASSETS_DIR" ]] && assets_flag=(--assets "$ASSETS_DIR")
   muck "${muck_inputs[@]}" -o "${SERVE_DIR}/" "${mirror_flag[@]+"${mirror_flag[@]}"}" "${assets_flag[@]+"${assets_flag[@]}"}" "${MUCK_ARGS[@]+"${MUCK_ARGS[@]}"}"

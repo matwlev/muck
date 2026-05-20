@@ -88,7 +88,6 @@ muck -i ch1.md -i ch2.md -i ch3.md
 muck -i ~/Documents/markdown/
 muck -i ~/Documents/markdown/*.md
 muck -i ~/Documents/markdown/ -o ./output/
-muck -i ~/Documents/markdown/ -o ./output/ --mirror-structure
 ```
 
 When converting multiple files, each gets its own output file. Use `-o dir/` to collect all outputs in one place. When `-i` is a directory, all `.md` files inside are converted.
@@ -158,11 +157,11 @@ You can also define themes explicitly in the config `[themes]` section (see [Con
 my-theme  ./overrides.css script-link:./extra.js
 ```
 
-The `nav-*` themes add a sidebar showing the full file tree with the current page highlighted. They work best with `--mirror-structure`:
+The `nav-*` themes add a sidebar showing the full file tree with the current page highlighted. They work best with directory input:
 
 ```bash
-muck -i ./docs/ -o ./output/ --mirror-structure --theme nav-dynamic
-muck-serve -i ./docs/ --mirror-structure --open -- --theme nav-dynamic
+muck -i ./docs/ -o ./output/ --theme nav-dynamic
+muck-serve -i ./docs/ --open -- --theme nav-dynamic
 ```
 
 ### CSS custom properties
@@ -241,7 +240,7 @@ muck-serve -i notes.md
 muck-serve -i ./docs/
 muck-serve -i notes.md --open
 muck-serve -i notes.md -p 3000 -- -s ./my-theme.css
-muck-serve -i ./docs/ --mirror-structure -- --theme nav-dynamic
+muck-serve -i ./docs/ -- --theme nav-dynamic
 ```
 
 Editing any file triggers a rebuild and live-reload. New `.md` files are picked up automatically. Press `Ctrl+C` to stop.
@@ -270,7 +269,6 @@ Editing any file triggers a rebuild and live-reload. New `.md` files are picked 
 | `--id-transform T` | | Transform heading IDs (repeatable). Presets: `lowercase`, `kebab`, `snake` |
 | `--no-rewrite-links` | | Don't rewrite `.md` links to `.html` |
 | `--keep-theme` | | Keep config theme when `-s`/`--style-link` is also used |
-| `--mirror-structure` | | Preserve input directory structure in output (default: on) |
 | `--no-mirror-structure` | | Flatten all outputs into the output directory |
 | `--no-muck-script` | | Don't inject the `muck` script |
 | `--concat-files` | | Concatenate all input files into a single HTML output |
@@ -286,7 +284,6 @@ Editing any file triggers a rebuild and live-reload. New `.md` files are picked 
 | `--input FILE\|DIR` | `-i` | Input Markdown file or directory (required, repeatable) |
 | `--port PORT` | `-p` | HTTP server port (default: `8080`) |
 | `--open` | | Open preview in default browser |
-| `--mirror-structure` | | Preserve input directory structure in output (default: on) |
 | `--no-mirror-structure` | | Flatten all outputs into the output directory |
 | `--assets DIR` | | Copy an assets directory into the serve output and watch for changes |
 | `--` | | Pass remaining arguments to muck |

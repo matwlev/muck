@@ -39,7 +39,6 @@ Options:
                              expression.
   --no-rewrite-links         Don't rewrite .md links to .html in output
   --keep-theme               Keep config theme when -s/--style-link is also used
-  --mirror-structure         Preserve input directory structure in output (default: on)
   --no-mirror-structure      Flatten all outputs into the output directory
   --no-muck-script           Don't inject the muck script into the output
   --concat-files             Concatenate all input files into a single HTML output.
@@ -94,7 +93,7 @@ Examples:
   muck -i notes.md -s ./theme.css                # custom stylesheet
   muck -i notes.md -o report.pdf --page-size A4  # PDF
   muck -i ch1.md -i ch2.md -i ch3.md            # multiple files
-  muck -i ./docs/ -o ./output/ --mirror-structure --theme nav-dynamic
+  muck -i ./docs/ -o ./output/ --theme nav-dynamic
 EOF
   exit 0
 }
