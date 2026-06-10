@@ -5,11 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.0.0] - 2026-04-24
+## [2.0.0] - 2026-06-10
 
 ### Added
+- `muck-serve`: `--open [path]` accepts an optional file path to open a specific page on launch (`.md` extension is converted to `.html` automatically)
+- `--concat-files` flag to concatenate multiple input files into a single HTML output
+- `--assets <dir>` flag for `muck` and `muck-serve` to copy an assets directory into the output
+- `--new-tab [exts]` flag to add `target=_blank` to links matching given extensions
+- `--id-transform` flag with `lowercase`, `kebab`, `snake` presets and custom sed expressions
+- `--keep-theme` flag to preserve config theme when `-s`/`--style-link` is also used
+- `--no-muck-script` flag to suppress `const muck` injection
+- `const muck` script injected into every page with `tree`, `current`, `headings`, and `sections` data
 - CSS custom property theme system with two layers: fixed color options (`--muck-color-*`) and semantic intent tokens (`--muck-theme-palette-*`)
-- New theme variants: `nav-light`, `nav-dark`, `nav-dynamic`
+- Folder-based themes: any directory in `~/.muck/themes/` is automatically a valid theme
+- New theme variants: `nav-light`, `nav-dark`, `nav-dynamic` with sidebar navigation
 - `--no-theme` flag to suppress a config-set default theme for a single run
 - `install.sh --no-config` to skip `~/.muck/` setup entirely
 - `install.sh --reset-config` to overwrite an existing `~/.muck/`
