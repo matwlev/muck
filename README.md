@@ -239,6 +239,7 @@ muck -i notes.md --id-transform 's/-/_/g'
 muck-serve -i notes.md
 muck-serve -i ./docs/
 muck-serve -i notes.md --open
+muck-serve -i ./docs/ --open planner/planner.md
 muck-serve -i notes.md -p 3000 -- -s ./my-theme.css
 muck-serve -i ./docs/ -- --theme nav-dynamic
 ```
@@ -283,7 +284,7 @@ Editing any file triggers a rebuild and live-reload. New `.md` files are picked 
 |------|-------|-------------|
 | `--input FILE\|DIR` | `-i` | Input Markdown file or directory (required, repeatable) |
 | `--port PORT` | `-p` | HTTP server port (default: `8080`) |
-| `--open` | | Open preview in default browser |
+| `--open [path]` | | Open preview in default browser. Optional path opens that page (`.md` converted to `.html`) |
 | `--no-mirror-structure` | | Flatten all outputs into the output directory |
 | `--assets DIR` | | Copy an assets directory into the serve output and watch for changes |
 | `--` | | Pass remaining arguments to muck |
